@@ -1,0 +1,31 @@
+[package]
+name = "omega-client"
+version = "0.2.0"
+description = "Omega personal workspace client"
+edition = "2021"
+rust-version = "1.77.2"
+
+[lib]
+name = "omega_client_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-http = { version = "2", features = ["unsafe-headers"] }
+tauri-plugin-opener = "2"
+tauri-plugin-omega-vault = { path = "../native/plugins/omega-vault" }
+
+[dev-dependencies]
+serde_json = "1"
+url = "2"
+urlpattern = "0.3"
+regex = "1"
+glob = "0.3"
+
+[profile.release]
+codegen-units = 1
+lto = true
+strip = true

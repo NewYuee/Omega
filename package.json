@@ -1,0 +1,32 @@
+{
+  "name": "omega",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "tauri": "node native/tauri.mjs",
+    "start": "node server.mjs",
+    "test": "node --test",
+    "native:bundle": "node native/build.mjs",
+    "native:dev": "node native/tauri.mjs dev",
+    "native:build": "node native/tauri.mjs build",
+    "native:android:init": "node native/tauri.mjs android init",
+    "native:android:build": "node native/tauri.mjs android build --apk"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@tauri-apps/cli": "^2.11.4",
+    "esbuild": "^0.28.2"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-http": "^2.6.0",
+    "@tauri-apps/plugin-opener": "^2.5.5",
+    "dompurify": "^3.4.15",
+    "marked": "^18.0.12",
+    "sharp": "^0.35.4"
+  }
+}

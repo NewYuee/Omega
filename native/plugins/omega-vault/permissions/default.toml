@@ -1,0 +1,3 @@
+[default]
+description = "Read, replace and forget Omega's single connection credential"
+permissions = ["allow-load", "allow-save", "allow-clear"]

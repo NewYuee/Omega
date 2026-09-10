@@ -1,0 +1,342 @@
+<!DOCTYPE html><html lang="zh-CN"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#101d20">
+<meta name="view-transition" content="same-origin">
+<title>Omega · 工作持续发生</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #263634; background: #f7f9f8; }
+  body { margin: 0; display: flex; height: 100dvh; overflow: hidden; background: #f7f9f8; }
+  button, input, textarea { font: inherit; }
+  button { cursor: pointer; border: 1px solid #d8e1de; border-radius: 7px; background: white; padding: 10px 15px; color: inherit; transition: all 0.2s; }
+  button:hover { background: #e9f0ed; }
+  
+  /* Drawer & Mobile Topbar */
+  .mobile-topbar { display: flex; align-items: center; justify-content: space-between; height: 52px; background: #101d20; color: #e5f6ed; padding: 0 16px; flex-shrink: 0; z-index: 50; }
+  .mobile-topbar h1 { font-size: 15px; font-weight: 500; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+  .icon-btn { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; padding: 0; background: transparent; border: none; color: inherit; border-radius: 6px; }
+  .icon-btn:hover { background: rgba(255,255,255,0.1); }
+  
+  .drawer-overlay { position: fixed; inset: 0; background: rgba(16, 29, 32, 0.6); z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+  .drawer-overlay.open { opacity: 1; pointer-events: auto; }
+  .drawer { position: fixed; top: 0; left: 0; bottom: 0; width: 280px; background: #101d20; color: #b9cbc9; z-index: 101; transform: translateX(-100%); transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); display: flex; flex-direction: column; }
+  .drawer.open { transform: translateX(0); }
+  
+  .drawer-header { display: flex; align-items: center; justify-content: space-between; padding: 20px 16px 12px; border-bottom: 1px solid #233435; }
+  .brand { display: flex; align-items: center; gap: 8px; color: #e5f6ed; font-size: 24px; text-decoration: none; }
+  .brand span { font-size: 14px; font-weight: 700; }
+  
+  #threads { flex: 1; overflow-y: auto; padding: 12px 0; }
+  .thread-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; min-height: 44px; }
+  .thread-item.selected { background: #293d3e; color: #fff; }
+  .thread-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; text-align: left; background: transparent; border: none; padding: 0; }
+  .thread-actions { display: flex; gap: 4px; opacity: 0.7; }
+  .thread-action-btn { width: 28px; height: 28px; padding: 0; background: transparent; border: none; display: flex; align-items: center; justify-content: center; border-radius: 4px; }
+  
+  .drawer-footer { padding: 16px; border-top: 1px solid #233435; display: flex; flex-direction: column; gap: 12px; font-size: 13px; }
+  .new-chat-btn { background: #23433e; color: #e6f3ed; border-color: #38534d; width: 100%; text-align: center; }
+  
+  main { flex: 1; min-width: 0; display: flex; flex-direction: column; position: relative; height: calc(100dvh - 52px); }
+  
+  /* Refined Message Area Styles */
+  #messages-container { flex: 1; overflow: hidden; display: flex; flex-direction: column; position: relative; }
+  .history-nav { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; background: white; border-bottom: 1px solid #d6e1da; font-size: 12px; color: #78908a; z-index: 20; box-shadow: 0 2px 5px rgba(0,0,0,0.02); flex-shrink: 0; }
+  .history-nav select { border: 1px solid #d6e1da; border-radius: 5px; padding: 4px 24px 4px 8px; background: #f7f9f8; color: #263634; outline: none; max-width: 180px; text-overflow: ellipsis; font-size: 12px; appearance: none; background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="%2378908a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>'); background-repeat: no-repeat; background-position: right 8px center; }
+  
+  #messages { flex: 1; overflow-y: auto; padding: 20px 16px 80px; scroll-behavior: smooth; display: flex; flex-direction: column; gap: 24px; }
+  
+  .exchange { display: flex; flex-direction: column; gap: 12px; }
+  
+  .message-row { display: flex; width: 100%; }
+  .message-row.user { justify-content: flex-end; }
+  .message-row.assistant { justify-content: flex-start; }
+  
+  .bubble-container { display: flex; flex-direction: column; max-width: 90%; }
+  .message-row.user .bubble-container { align-items: flex-end; }
+  .message-row.assistant .bubble-container { align-items: flex-start; max-width: 95%; }
+  
+  .role-label { font-size: 11px; color: #78908a; margin-bottom: 4px; display: flex; align-items: center; gap: 4px; }
+  .role-label .avatar { width: 16px; height: 16px; border-radius: 4px; background: #eaf1ed; color: #235e4d; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 9px; }
+  
+  .bubble { font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .bubble.user-bubble { background: #eaf1ed; color: #263634; padding: 10px 14px; border-radius: 12px 12px 0 12px; }
+  .bubble.assistant-card { background: white; color: #263634; padding: 16px; border-radius: 12px 12px 12px 0; border: 1px solid #d6e1da; box-shadow: 0 4px 15px rgba(22, 62, 41, 0.02); width: 100%; }
+  
+  .tool-disclosure { font-family: ui-monospace, monospace; font-size: 11px; border-left: 2px solid #bccfc5; background: #f0f3f1; border-radius: 0 8px 8px 0; margin-bottom: 8px; align-self: flex-start; max-width: 90%; }
+  .tool-disclosure summary { padding: 6px 12px; cursor: pointer; color: #78908a; display: flex; align-items: center; gap: 6px; user-select: none; }
+  .tool-disclosure pre { padding: 0 12px 8px 12px; margin: 0; color: #52695e; overflow-x: auto; max-height: 150px; }
+  
+  .markdown-body { white-space: normal; }
+  .markdown-body p { margin: 0 0 12px; }
+  .markdown-body p:last-child { margin-bottom: 0; }
+  .markdown-body h3 { font-size: 15px; font-weight: 600; margin: 16px 0 8px; color: #235e4d; border-bottom: 1px solid #eaf1ed; padding-bottom: 6px; }
+  .markdown-body ul, .markdown-body ol { margin: 0 0 12px; padding-left: 20px; }
+  .markdown-body li { margin-bottom: 6px; }
+  .markdown-body pre { background: #f7f9f8; border: 1px solid #d6e1da; border-radius: 8px; padding: 12px; overflow-x: auto; margin: 12px 0; }
+  .markdown-body code { font-family: ui-monospace, monospace; font-size: 12px; color: #263634; }
+  .markdown-body .inline-code { background: #f0f3f1; padding: 2px 4px; border-radius: 4px; font-size: 11px; color: #235e4d; }
+  
+  .code-header { display: flex; justify-content: space-between; align-items: center; background: #eaf1ed; padding: 4px 10px; border-radius: 8px 8px 0 0; border: 1px solid #d6e1da; border-bottom: none; font-size: 10px; color: #78908a; }
+  .code-header button { padding: 2px 6px; font-size: 10px; background: transparent; border: 1px solid transparent; color: #235e4d; min-height: auto; }
+  .code-block-wrapper pre { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+
+  .floating-latest { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); background: white; border: 1px solid #d6e1da; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border-radius: 20px; padding: 6px 12px; font-size: 11px; color: #235e4d; display: flex; align-items: center; gap: 4px; z-index: 30; opacity: 0.9; }
+
+  /* Growing Composer & Fullscreen */
+  #composer-wrapper { position: absolute; bottom: 0; left: 0; right: 0; background: #f7f9f8; border-top: 1px solid #d6e1da; z-index: 40; padding: 8px 12px 24px; transition: all 0.3s ease; }
+  #composer-wrapper.fullscreen { top: 0; bottom: 0; z-index: 150; padding: 16px 16px 24px; display: flex; flex-direction: column; }
+  
+  #composer { background: #fff; border: 1px solid #d6e1da; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; transition: border-color 0.2s; flex: 1; }
+  #composer-wrapper.fullscreen #composer { height: 100%; border-radius: 8px; }
+  #composer:focus-within { border-color: #235e4d; }
+  
+  textarea { border: 0; outline: none; resize: none; width: 100%; background: transparent; line-height: 1.6; font-size: 14px; min-height: 22px; max-height: 120px; overflow-y: auto; padding: 0; }
+  #composer-wrapper.fullscreen textarea { max-height: none; flex: 1; }
+  
+  .compose-toolbar { display: flex; justify-content: space-between; align-items: center; }
+  .compose-actions { display: flex; gap: 4px; }
+  .tool-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; background: transparent; border: none; color: #78908a; border-radius: 6px; }
+  .tool-btn:hover { background: #f0f3f1; color: #235e4d; }
+  
+  #send { background: #235e4d; color: white; border: 0; font-weight: 500; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border-radius: 8px; }
+  #composer-wrapper.fullscreen #send { width: auto; padding: 0 16px; gap: 6px; }
+  #send:hover { background: #1a473a; }
+
+  /* Dialog */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(16, 29, 32, 0.6); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 20px; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+  .modal-overlay.open { opacity: 1; pointer-events: auto; }
+  .modal { background: white; border-radius: 12px; padding: 24px; width: 100%; max-width: 320px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+  .modal h2 { margin: 0 0 12px; font-size: 18px; color: #263634; }
+  .modal p { margin: 0 0 20px; font-size: 13px; color: #6e8177; line-height: 1.6; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  .btn-danger { background: #fff0ed; color: #9b3c30; border-color: #f5d6d1; }
+  .btn-secondary { background: white; color: #415b50; border-color: #c9d7d0; }
+
+  /* Inline SVGs for Icons */
+  .svg-icon { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+</style>
+</head>
+<body>
+  <div class="w-full h-screen flex flex-col">
+    <!-- Mobile Topbar -->
+    <header class="mobile-topbar pt-14 pb-2 h-[88px] items-end">
+      <div class="flex items-center justify-between w-full">
+        <button class="icon-btn" id="menu-btn" aria-label="打开菜单">
+          <svg class="svg-icon" viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
+        <h1 id="title">排查数据库死锁问题</h1>
+        <div class="flex items-center gap-1">
+          <div class="w-2 h-2 rounded-full bg-[#67b599]" title="已连接"></div>
+          <button class="icon-btn" aria-label="新建会话">
+            <svg class="svg-icon" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Drawer Menu -->
+    <div class="drawer-overlay" id="drawer-overlay"></div>
+    <div class="drawer" id="drawer">
+      <div class="drawer-header pt-12">
+        <a class="brand" href="/">Ω <span>OMEGA</span></a>
+        <button class="icon-btn text-[#78908a]" id="drawer-close" aria-label="关闭菜单">
+          <svg class="svg-icon" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+      
+      <div class="px-4 py-3 text-[11px] text-[#78908a] uppercase">你的工作</div>
+      
+      <nav id="threads">
+        <div class="thread-item selected">
+          <button class="thread-name">排查数据库死锁问题</button>
+          <div class="thread-actions">
+            <button class="thread-action-btn" aria-label="重命名">
+              <svg class="svg-icon w-4 h-4" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+            </button>
+          </div>
+        </div>
+        <div class="thread-item">
+          <button class="thread-name">分析上季度营收数据</button>
+          <div class="thread-actions">
+            <button class="thread-action-btn text-[#78908a]" aria-label="删除" onclick="document.getElementById('delete-modal').classList.add('open')">
+              <svg class="svg-icon w-4 h-4" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+            </button>
+          </div>
+        </div>
+        <div class="thread-item">
+          <button class="thread-name">重构用户认证模块</button>
+        </div>
+      </nav>
+      
+      <div class="drawer-footer pb-[34px]">
+        <button class="new-chat-btn">
+          <svg class="svg-icon inline-block mr-1 w-4 h-4" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          新建会话
+        </button>
+        <div class="flex justify-between items-center text-[#90a6a4]">
+          <span class="flex items-center gap-1">
+            <div class="w-2 h-2 rounded-full bg-[#67b599]"></div> 已连接
+          </span>
+          <button class="bg-transparent border-none p-0 text-[#b9cbc9] underline decoration-[#344547]">连接设置</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Main Content -->
+    <main>
+      <div id="messages-container">
+        <div class="history-nav">
+          <div class="flex items-center gap-2 w-full">
+            <span class="hidden">历史</span>
+            <select id="history-select" aria-label="选择历史问答" class="flex-1">
+              <option value="1">1. 发现死锁报错信息</option>
+              <option value="2">2. 分析死锁原因及代码</option>
+              <option value="3" selected>3. 编写监控脚本</option>
+            </select>
+            <div class="flex items-center">
+              <button class="icon-btn text-[#78908a] w-7 h-7" aria-label="上一条">
+                <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              </button>
+              <button class="icon-btn text-[#78908a] opacity-50 w-7 h-7" aria-label="下一条" disabled>
+                <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+              <button class="text-[10px] ml-1 px-2 py-1 border border-[#d6e1da] rounded text-[#263634] whitespace-nowrap">最新</button>
+            </div>
+          </div>
+        </div>
+
+        <section id="messages">
+          <!-- Exchange 3 (Latest) -->
+          <div class="exchange" id="exchange-3">
+            <div class="message-row user">
+              <div class="bubble-container">
+                <span class="role-label">你</span>
+                <div class="bubble user-bubble">关于这部分，你能写个简单的 Python 脚本监控这类死锁日志并报警吗？</div>
+              </div>
+            </div>
+            
+            <div class="message-row assistant">
+              <div class="bubble-container">
+                <span class="role-label">
+                  <span class="avatar">Ω</span>
+                  OMEGA
+                </span>
+                <div class="bubble assistant-card">
+                  <div class="markdown-body">
+                    <p>没问题。我们可以编写一个轻量级的 Python 脚本，利用 <span class="inline-code">tail</span> 实时监控日志流，并在匹配到死锁关键字后发送报警。</p>
+                    
+                    <div class="code-block-wrapper">
+                      <div class="code-header">
+                        <span>python</span>
+                        <button class="flex items-center gap-1">
+                          <svg class="svg-icon w-3 h-3" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> 复制
+                        </button>
+                      </div>
+                      <pre><code class="language-python">import subprocess
+import re
+import requests
+
+LOG = "/var/log/server.log"
+
+def monitor():
+    # 省略实现...
+    pass</code></pre>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+      
+      <!-- Composer Area -->
+      <div id="composer-wrapper">
+        <div class="flex justify-between items-center mb-1 px-1">
+          <span class="text-[10px] text-[#78908a] truncate">
+            <svg class="svg-icon inline-block mr-1 w-3 h-3" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+            /Projects/CoreApp
+          </span>
+          <button class="icon-btn w-6 h-6 text-[#78908a]" id="fullscreen-toggle" aria-label="全屏编辑">
+            <svg class="svg-icon w-3.5 h-3.5" viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+          </button>
+        </div>
+        <form id="composer">
+          <textarea id="prompt" placeholder="想推进什么？" aria-label="消息" rows="1"></textarea>
+          <div class="compose-toolbar">
+            <div class="compose-actions">
+              <button type="button" class="tool-btn" aria-label="添加图片">
+                <svg class="svg-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+              </button>
+              <button type="button" class="tool-btn hidden" aria-label="命令">
+                <svg class="svg-icon" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+              </button>
+            </div>
+            <button id="send" aria-label="发送">
+              <svg class="svg-icon text-white w-4 h-4" viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+              <span class="hidden">发送</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </main>
+  </div>
+
+  <!-- Delete Confirmation Modal -->
+  <div class="modal-overlay" id="delete-modal">
+    <div class="modal">
+      <h2>确认删除会话？</h2>
+      <p>将删除“分析上季度营收数据”及所有子会话。项目文件不受影响，但若有执行中的任务需先停止。</p>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="document.getElementById('delete-modal').classList.remove('open')">取消</button>
+        <button class="btn-danger">确认删除</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Drawer toggle
+    document.getElementById('menu-btn').addEventListener('click', () => {
+      document.getElementById('drawer').classList.add('open');
+      document.getElementById('drawer-overlay').classList.add('open');
+    });
+    
+    const closeDrawer = () => {
+      document.getElementById('drawer').classList.remove('open');
+      document.getElementById('drawer-overlay').classList.remove('open');
+    };
+    
+    document.getElementById('drawer-close').addEventListener('click', closeDrawer);
+    document.getElementById('drawer-overlay').addEventListener('click', closeDrawer);
+
+    // Fullscreen compose toggle
+    const composerWrapper = document.getElementById('composer-wrapper');
+    const fullscreenToggle = document.getElementById('fullscreen-toggle');
+    const sendBtnText = document.querySelector('#send span');
+    const promptArea = document.getElementById('prompt');
+
+    fullscreenToggle.addEventListener('click', () => {
+      const isFullscreen = composerWrapper.classList.toggle('fullscreen');
+      
+      if (isFullscreen) {
+        fullscreenToggle.innerHTML = '<svg class="svg-icon w-3.5 h-3.5" viewBox="0 0 24 24"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>';
+        sendBtnText.classList.remove('hidden');
+        promptArea.setAttribute('rows', '10');
+      } else {
+        fullscreenToggle.innerHTML = '<svg class="svg-icon w-3.5 h-3.5" viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>';
+        sendBtnText.classList.add('hidden');
+        promptArea.setAttribute('rows', '1');
+        promptArea.style.height = 'auto';
+      }
+    });
+
+    // Auto-grow textarea
+    promptArea.addEventListener('input', function() {
+      if (!composerWrapper.classList.contains('fullscreen')) {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+      }
+    });
+  </script>
+</body></html>

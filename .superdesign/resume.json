@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "targets": {
+    "/": {
+      "targetKind": "existing-ui",
+      "projectId": "77e26036-c03e-4bd5-a4e8-bd7aae504391",
+      "baselineDraftId": "7f0dd82d-6b19-428d-907e-7e70b1d80666",
+      "activeDraftId": "7f0dd82d-6b19-428d-907e-7e70b1d80666",
+      "designSystemPath": ".superdesign/design-system.md",
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        "public/index.html",
+        "public/style.css",
+        "public/app.js",
+        "public/markdown.js",
+        "public/attachments.js",
+        "public/ui.js",
+        "public/model-settings.js"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "a586c3d99d7b41f90dbd57ab1eb12307a0c2e536ecff84d82dc753ced6828f94",
+        "public/index.html": "229ba04cf9aabd01a1b21b4cdf2f573c8714a0e9acd3c1503205f4af2fcd6a5b",
+        "public/style.css": "fbb9b7285a2dc46fad807d864b69eb63da34a6905e26f64abc2a8efaf0a80568",
+        "public/app.js": "b07e0d3cce907b397739055619e7d93f01be1f88cfce81a836eb2b5738f59ad9",
+        "public/markdown.js": "04591d1925efe76583c26807e8cc809926a5423c9aae0127c540a9cc66a1ee7b",
+        "public/attachments.js": "e88297b11a2aedbfd1ae68ed5c3ea4807f4a2e10d9e3abaa721b2b4fa9bb8b60",
+        "public/ui.js": "291c6a670238a6da271aec73c8576720a11f6965d8a4a67a8121fae05259cdf4",
+        "public/model-settings.js": "046ff93d8558e3e4ba6a25c79614a5d6656754848f6f7baae1faab373cdb398e"
+      },
+      "components": [],
+      "drafts": {
+        "7f0dd82d-6b19-428d-907e-7e70b1d80666": {
+          "title": "Omega · 工作持续发生 (Mobile Responsive Chat UI)",
+          "visualDirection": "Compact mobile header, conversation drawer with rename/delete, one-line growing composer and immersive editor; preserves desktop sidebar and chat bubbles; compact model settings dialog with model-specific reasoning effort; native server connection dialog uses existing typography and controls, explicit HTTP warning and secure device storage",
+          "currentVersion": 5
+        }
+      },
+      "updatedAt": "2026-09-10T11:53:06.015Z"
+    }
+  }
+}

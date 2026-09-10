@@ -1,0 +1,11 @@
+{
+  "productName":"Omega Transport Test",
+  "version":"0.2.0",
+  "identifier":"com.omega.transport-test",
+  "build":{"frontendDist":"../../.toolchains/native-smoke-ui"},
+  "app":{
+    "windows":[{"label":"main","title":"Omega Transport Test · 自动验证","width":420,"height":240,"visible":true}],
+    "security":{"capabilities":["main"],"csp":"default-src 'self'; script-src 'self'; connect-src ipc: http://ipc.localhost"}
+  },
+  "bundle":{"active":false,"icon":["../icons/icon.png"]}
+}
