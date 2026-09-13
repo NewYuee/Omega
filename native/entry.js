@@ -84,6 +84,8 @@ document.addEventListener('click',e => {
 });
 // Android host can consume Back without throwing away a draft or closing the App.
 globalThis.omegaBack = () => {
+  if(globalThis.omegaReactGroupComposer?.collapse())return true;
+  if(globalThis.omegaReactComposer?.collapse())return true;
   const dialog = [...document.querySelectorAll('dialog[open]')].at(-1);
   if (!dialog) return false;
   const event = new Event('cancel',{cancelable:true});
@@ -91,3 +93,4 @@ globalThis.omegaBack = () => {
   return true;
 };
 await import('../public/app.js');
+await import('../client/src/main.tsx');

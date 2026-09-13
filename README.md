@@ -2,17 +2,53 @@
 
 个人多设备在线持续办公 Bot，第一阶段原型。Node.js 接入服务持有一个常驻 Codex App Server，响应式 Web 客户端共享其会话、执行与审批状态。
 
-采用 Grok Bot 的客户端/Coordinator 分层思路，但当前 UI 为独立实现，未复制其受原版 renderer 约束的前端。除浏览器外，现提供 Tauri 2 原生客户端工程，面向 macOS、Windows 和 Android。实际构建状态与安装方法见 [原生客户端说明](native/README.md)。
+采用 Grok Bot 的客户端/Coordinator 分层思路，但当前 UI 为独立实现，未复制其受原版 renderer 约束的前端。Web、Windows/macOS Electron 桌面端和 Android Tauri 外壳共享同一套 React 产品层；Android 构建说明见 [原生客户端说明](native/README.md)。
 
 ## 启动
 
-需要 Node.js 22.5+（群组状态使用内置 SQLite）、已安装且已登录的 Codex CLI。实际验证版本：Node 26.0.0、Codex CLI 0.153.4。
+需要 Node.js 22.18+（群组状态使用内置 SQLite，TypeScript 服务模块使用 Node 原生类型擦除）、已安装且已登录的 Codex CLI。实际验证版本：Node 26.0.0、Codex CLI 0.153.4。
 
 ```sh
 cd /Users/newyue/Lab/omega
 npm ci
 npm start
 ```
+
+`npm start` 会先构建 React + TypeScript Web 客户端，再以 `server.ts` 启动 Node.js 服务端。HTTP/SSE 入口、群组 SQLite 存储与调度器、聊天消息主体、单聊/群聊输入器与附件、会话与群组侧栏、成员与问题定位栏、Web 设置/CRUD 表单、审批与补充信息卡片、控制中心、共享契约、Codex 桥接、自动化、历史窗口、图片、模型设置和用量统计均进入 TypeScript 严格检查。原生连接表单继续由系统安全存储适配器管理。开发前可执行 `npm run typecheck`。
+
+React 产品层使用统一 App Store 保存路由、当前会话/群组、侧栏数据、连接与未读状态。单聊消息与历史导航、审批、会话/群组列表、群聊消息与历史窗口、成员及问题面板均已移除旧 DOM 渲染和滚动控制，React 是这些产品视图及其窗口状态的唯一持有者；兼容控制器只保留 Codex RPC、事件接续和群组 API 桥接。命令面板与 React 侧栏不再通过扫描 DOM 获取导航数据。
+
+长期后台运行推荐安装当前用户级服务：
+
+```sh
+npm run service:install   # macOS LaunchAgent / Linux systemd user service
+npm run service:status
+npm run service:uninstall
+```
+
+不安装系统服务时也可以运行 `npm run service:start` 使用内置 supervisor；网页“重启 Omega”只有在 supervisor 或系统服务模式下启用。
+
+## Electron 桌面端
+
+Windows 和 macOS 桌面端使用 Electron，共享 Web 客户端并连接同一个 Omega 服务端。首次启动填写服务器地址和访问密钥，密钥通过系统安全存储加密保存；若未签名开发包无法访问系统安全存储，本次运行仍可连接，但不会明文保存密钥，下次启动需重新输入。
+
+```sh
+npm run desktop:dev
+npm run desktop:package
+```
+
+桌面端提供托盘、应用菜单、快捷新建会话/群组、控制中心、侧栏切换和任务完成系统通知。安装包输出到 `release/`。Android 仍使用现有 Tauri 外壳，并通过 `npm run native:android:build -- --debug --target aarch64` 打包共享前端。
+
+## 自动化、连接与操作中心
+
+按 `⌘/Ctrl + Shift + K`，或在命令面板选择“控制中心”：
+
+- “自动化”把定时任务绑定到已有会话，支持分钟间隔或指定时区的每日时刻、立即运行、暂停和删除。状态存放在 `.omega/automations.sqlite`，执行继续使用该会话的原上下文；同一会话忙碌时不会并发插入另一轮。
+- “连接与插件”展示 Codex App Server 返回的 Apps、MCP 服务器及插件市场，支持启停 App、刷新 MCP、发起 MCP OAuth，以及经二次确认安装/卸载插件。插件协议仍是 Codex 的实验接口，升级 CLI 后需要重新验证。
+- “电脑与浏览器”把操作要求直接发给指定会话。它只调用该会话已配置且获准的 App/MCP/Skill/执行环境，不是绕过审批的远程桌面，也不会假装存在尚未连接的浏览器或电脑驱动；登录、发送、购买、删除、发布等副作用仍要求确认。
+- “系统与备份”显示 Omega/Codex 健康、运行时间、内存、连接设备和活动轮次；支持重启 Codex App Server、下载备份、校验并暂存恢复包，以及在守护模式下重启 Omega。
+
+按 `⌘/Ctrl + K` 可以同时搜索命令、会话名称、已建立索引的单聊正文和全部群组消息。单聊索引在查看历史或收到新消息时增量建立，不会为一次搜索把所有 Codex 历史加载进内存；因此尚未在新版 Omega 中访问过的旧单聊正文可能需要先打开一次，群组 SQLite 消息没有此限制。
 
 打开 http://127.0.0.1:4310。访问密钥自动生成在 `.omega/access-token`，在本机终端读取并填入页面：
 
@@ -49,6 +85,12 @@ ssh -N -L 4310:127.0.0.1:4310 USER@SERVER
 ```
 
 在第二台电脑打开 http://127.0.0.1:4310 并输入同一访问密钥。两台设备连接同一 App Server，而不是各自启动独立实例。
+
+每个浏览器配置、Electron 客户端和 Android WebView 会生成一个不含隐私信息的本地设备标识。服务端按设备而非 SSE 标签页连接数显示“在线设备”，同一设备打开多个标签页不会被误算成多台设备；清除应用或浏览器站点数据后会生成新的标识。
+
+会话和群组的新回复会写入服务端未读账本，侧栏显示未读数量并保存首个未读轮次/消息位置。任一设备打开对应会话后会同步清除其他设备的未读状态。SSE 连接会携带最近事件游标，短时断线后补发最多 512 条事件；若服务重启或断线超过缓冲窗口，则用状态快照和分页历史重新校准，不会自动重发用户消息。
+
+数据备份下载为 `.omega-backup.gz`，包含群组、自动化、图片、模型设置、请求账本、统计、未读和搜索索引，但明确排除访问密钥。恢复包会先检查格式、路径、体积和每个文件的 SHA-256；验证通过后写入待恢复区，下次重启时才替换 Omega 管理的数据。恢复不会修改项目工作目录或 Codex 自己保存的会话历史。
 
 手机或无需隧道的长期接入，应通过现有私有网络或 HTTPS 反向代理把流量转发到本服务，并关闭 SSE 缓冲。当前没有自动配置域名、证书或 SSH 账户。不要把带访问密钥的 HTTP 流量直接暴露到公共网络。
 
@@ -90,11 +132,11 @@ ssh -N -L 4310:127.0.0.1:4310 USER@SERVER
 
 ## 架构
 
-`public/app.js / groups.js → HTTP RPC / SSE → server.mjs → group-orchestrator.mjs → bridge.mjs → codex app-server (stdio)`
+`React 聊天主体 / 控制中心 + 兼容控制器 → HTTP RPC / SSE → Omega Node 服务 → 群组调度 / 自动化 → TypeScript Bridge → codex app-server (stdio)`
 
 Gateway 是所有设备的单一 Codex 连接，统一广播通知和分配审批。Codex 自己管理持久会话，Omega 保存访问密钥、请求去重日志与图片附件；不维护第二份权威聊天记录。助手回复使用 marked 解析 Markdown，经 DOMPurify 白名单清理后显示；用户输入与工具输出保持纯文本。代码块支持复制，外链限定为 HTTP(S)、mailto 或页内锚点。
 
-群组协作是独立的轻量状态层：`groups-store.mjs` 使用 SQLite 保存调度事实，`group-orchestrator.mjs` 负责生成依赖计划、从队列选择可运行任务、并行派发、审核和汇总。SQLite 不复制 Codex 的完整会话历史；详细工具输出仍按需从成员会话读取。
+群组协作是独立的轻量状态层：[groups-store.ts](src/server/groups-store.ts) 使用 SQLite 保存调度事实，[group-orchestrator.ts](src/server/group-orchestrator.ts) 负责生成依赖计划、从队列选择可运行任务、并行派发、审核和汇总。根目录同名 `.mjs` 只为旧测试与外部导入提供转发，不再包含业务实现。SQLite 不复制 Codex 的完整会话历史；详细工具输出仍按需从成员会话读取。
 
 ## 验证
 
@@ -125,10 +167,10 @@ node group-ui-smoke.mjs
 ## 已知边界
 
 - 个人单用户原型；不提供团队角色和租户隔离。
-- 未迁移 Grok Bot 插件、reaction、VNC 和本机工具。使用服务端 Codex 已有工具配置。
-- 会话列表首批 60 条；浏览器按需保留一轮问答、长正文分段展示。服务端仍使用版本兼容的 includeTurns 读取历史，超长会话首次读取可能较慢。
+- 插件管理使用 Codex App Server 的实验协议；reaction 和内置 VNC 尚未复刻。电脑/浏览器入口依赖服务端 Codex 已配置的工具，不自带绕过授权的系统控制驱动。
+- 会话列表首批 60 条；单聊历史通过 App Server 的 `thread/turns/list` 每页读取 60 轮摘要，并通过 `thread/items/list` 只读取当前轮最近 200 个条目。左右箭头可跨页，回到最新会释放旧窗口；浏览器始终只渲染一轮问答，长正文分段展示，不再用 `includeTurns` 拉取整段历史。
 - 支持图片附件，但通用文件上传和文件浏览器尚未实现。Markdown 中的任意远程图片和内嵌 HTML 交互组件不开放。
 - 实时事件不做持久重放；重连以历史快照恢复，短暂工具输出可能仅在最终结果中可见。
-- App Server 异常退出后需重启 Omega；服务重启后活动任务不自动重发。
-- 请求去重日志持久保存，内存缓存最多 2000 次提交；达到后需在任务结束后重启服务。
+- Codex App Server 异常退出后，Omega 会以 0.5–15 秒指数退避自动拉起并重新初始化。中断时正在执行的单聊或群组任务不会盲目重放：单聊提交保持“结果未知”，群组任务进入待核对状态；连接恢复后页面自动刷新。Omega 主进程本身重启后活动任务同样不会自动重发。
+- 请求去重日志持久保存；内存只保留执行中的请求并限制为 2000 条，任务结束后立即释放，不再随累计会话轮次持续增长。
 - 默认只监听本机。长期无人值守运行、远程域名与手机入口需要部署到你选定的常驻主机。

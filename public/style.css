@@ -80,7 +80,8 @@ main>header h1{margin:0;font-size:18px}
 @media(max-width:700px){.compose-footer{justify-content:space-between}.image-help{line-height:1.5}.image-pending{flex-basis:100px}}
 .thread-row{display:flex;align-items:center;flex:0 0 auto;min-width:0;border-radius:7px}
 .thread-row.selected{background:#293d3e;color:#fff}
-#threads .thread-open{flex:1 1 auto;min-width:0;max-width:none}
+.unread-dot{display:inline-grid;place-items:center;flex:0 0 auto;min-width:18px;height:18px;padding:0 5px;margin-left:7px;border-radius:10px;background:#4eaf89;color:#071812;font-size:10px;font-weight:700;line-height:1;box-shadow:0 0 0 1px #17332b}.thread-row.selected .unread-dot,.group-row.selected .unread-dot{background:#d7fff0;box-shadow:0 0 0 1px #31564a}
+.sidebar-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#threads .thread-open,#groups .group-row strong{display:flex;align-items:center}#threads .thread-open{flex:1 1 auto;min-width:0;max-width:none}
 #threads .thread-rename{flex:0 0 36px;padding:8px 4px;text-align:center;font-size:17px;min-height:40px}
 #rename-error{color:#9b3c30}
 @media(max-width:700px){.thread-row{width:190px;flex:0 0 190px}#threads .thread-rename{min-height:36px}}

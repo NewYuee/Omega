@@ -1,0 +1,24 @@
+import {createRoot} from 'react-dom/client';
+import {CommandPalette} from './CommandPalette.js';
+import {ControlCenter} from './ControlCenter.js';
+import {installChatTimeline} from './ChatTimeline.js';
+import {installGroupTimeline} from './GroupTimeline.js';
+import {installWorkspaceSidebar} from './WorkspaceSidebar.js';
+import {installGroupPanels} from './GroupPanels.js';
+import {installFormLayer} from './FormLayer.js';
+import {installApprovalPanel} from './ApprovalPanel.js';
+import {installComposer} from './Composer.js';
+import {installGroupComposer} from './GroupComposer.js';
+import {installAppState} from './AppState.js';
+
+document.body.classList.add('omega-product');
+installAppState();
+installChatTimeline();
+installGroupTimeline();
+installWorkspaceSidebar();
+installGroupPanels();
+installFormLayer();
+installApprovalPanel();
+installComposer();
+installGroupComposer();
+const host=document.createElement('div');host.id='omega-product-layer';document.body.append(host);createRoot(host).render(<><CommandPalette/><ControlCenter/></>);

@@ -10,3 +10,12 @@ export function forgetSessionKey() { if (!native) sessionStorage.removeItem('ome
 const threadKey = () => native ? 'omega-thread:' + (native.profile?.serverUrl || '') : 'omega-thread';
 export const savedThread = () => localStorage.getItem(threadKey());
 export const rememberThread = id => id ? localStorage.setItem(threadKey(),id) : localStorage.removeItem(threadKey());
+export function clientDeviceId(){
+  const storageKey='omega-device-id';
+  try{const saved=localStorage.getItem(storageKey);if(saved)return saved;}catch{}
+  let value;
+  if(typeof crypto.randomUUID==='function')value=crypto.randomUUID();
+  else{const bytes=crypto.getRandomValues(new Uint8Array(16));value=[...bytes].map(byte=>byte.toString(16).padStart(2,'0')).join('');}
+  try{localStorage.setItem(storageKey,value);}catch{}
+  return value;
+}

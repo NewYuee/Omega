@@ -1,9 +1,5 @@
 // Authenticated image requests use headers, never access keys in image URLs.
 export function createAttachments({getKey, isLocked, onChange, onError}) {
-  const tray = document.getElementById('image-tray');
-  const picker = document.getElementById('image-files');
-  const add = document.getElementById('add-image');
-  const composer = document.getElementById('composer');
   const dialog = document.getElementById('image-viewer');
   const viewer = document.getElementById('image-view');
   const viewerStatus = document.getElementById('image-view-status');
@@ -26,17 +22,7 @@ export function createAttachments({getKey, isLocked, onChange, onError}) {
     const index = records.indexOf(record); if (index >= 0) records.splice(index,1);
   }
   function renderTray() {
-    tray.replaceChildren();
-    for (const record of records) {
-      const card = document.createElement('div'); card.className = 'image-pending';
-      if (record.url) { const img = document.createElement('img'); img.src = record.url; img.alt = record.name; card.append(img); }
-      const label = document.createElement('span'); label.textContent = record.status; label.title = record.name; card.append(label);
-      const button = document.createElement('button'); button.type = 'button'; button.textContent = '移除'; button.disabled = isLocked();
-      button.setAttribute('aria-label','移除图片 '+record.name);
-      button.onclick = () => { remove(record); renderTray(); onChange(); }; card.append(button); tray.append(card);
-    }
-    tray.hidden = !records.length;
-    add.disabled = isLocked() || records.length >= 4;
+    onChange();
   }
   function ingest(files) {
     if (isLocked()) return;
@@ -60,32 +46,11 @@ export function createAttachments({getKey, isLocked, onChange, onError}) {
           record.url = URL.createObjectURL(blob); record.status = '已就绪';
         } catch (e) {
           if (!record.controller.signal.aborted) { record.image = null; record.status = '上传失败，请移除后重试'; onError(e.message); }
-        } finally { record.file = null; renderTray(); onChange(); }
+        } finally { record.file = null; renderTray(); }
       });
     }
-    renderTray(); onChange();
+    renderTray();
   }
-  add.onclick = () => picker.click();
-  picker.onchange = () => { ingest([...picker.files]); picker.value = ''; };
-  composer.addEventListener('paste',event => {
-    const files = [...(event.clipboardData?.items || [])].filter(x => x.kind === 'file').map(x => x.getAsFile()).filter(Boolean);
-    if (!files.length) return;
-    event.preventDefault(); ingest(files);
-    const text = event.clipboardData.getData('text/plain');
-    if (text && !isLocked()) {
-      const prompt = document.getElementById('prompt');
-      prompt.setRangeText(text,prompt.selectionStart,prompt.selectionEnd,'end');
-      prompt.dispatchEvent(new Event('input',{bubbles:true}));
-    }
-  });
-  composer.addEventListener('dragover',event => {
-    if ([...(event.dataTransfer?.types || [])].includes('Files')) { event.preventDefault(); composer.classList.add('image-drag'); }
-  });
-  composer.addEventListener('dragleave',event => { if (!composer.contains(event.relatedTarget)) composer.classList.remove('image-drag'); });
-  composer.addEventListener('drop',event => {
-    event.preventDefault(); composer.classList.remove('image-drag');
-    ingest([...(event.dataTransfer?.files || [])]);
-  });
   function clearViewer() {
     viewerController?.abort(); viewer.removeAttribute('src'); viewer.hidden = true;
     if (viewerURL) URL.revokeObjectURL(viewerURL); viewerURL = null;
@@ -135,8 +100,11 @@ export function createAttachments({getKey, isLocked, onChange, onError}) {
   return {
     get ready() { return records.every(r => r.image && r.url); },
     get ids() { return records.flatMap(r => r.image ? [r.image.id] : []); },
+    get records() { return records.map((record,index)=>({index,name:record.name,status:record.status,url:record.url||'',ready:!!record.image&&!!record.url})); },
+    ingest,
+    remove(index) { const record=records[index];if(!record||isLocked())return;remove(record);renderTray(); },
     refresh:renderTray, historyImages, prune,
-    clear() { for (const record of [...records]) remove(record); clearViewer(); if (dialog.open) dialog.close(); renderTray(); onChange(); }
+    clear() { for (const record of [...records]) remove(record); clearViewer(); if (dialog.open) dialog.close(); renderTray(); }
   };
 }
 import { apiFetch } from './platform.js';

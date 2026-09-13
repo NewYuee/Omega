@@ -3,13 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "desktop-dist/main.cjs",
   "engines": {
-    "node": ">=22.5"
+    "node": ">=22.18"
   },
   "scripts": {
     "tauri": "node native/tauri.mjs",
-    "start": "node server.mjs",
+    "start": "npm run web:build && node server.ts",
+    "service:start": "npm run web:build && node scripts/omega-supervisor.mjs",
+    "service:install": "node scripts/service-manager.mjs install",
+    "service:uninstall": "node scripts/service-manager.mjs uninstall",
+    "service:status": "node scripts/service-manager.mjs status",
     "test": "node --test",
+    "typecheck": "tsc",
+    "web:build": "node client/build.mjs",
+    "desktop:build": "node desktop/build.mjs && npm run web:build",
+    "desktop:dev": "npm run desktop:build && electron .",
+    "desktop:package": "npm run desktop:build && electron-builder",
     "native:bundle": "node native/build.mjs",
     "native:dev": "node native/tauri.mjs dev",
     "native:build": "node native/tauri.mjs build",
@@ -19,7 +29,24 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@tauri-apps/cli": "^2.11.4",
-    "esbuild": "^0.28.2"
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "electron": "^42.1.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.1"
+  },
+  "build": {
+    "appId": "com.omega.workspace.desktop",
+    "productName": "Omega",
+    "directories": {"output": "release"},
+    "files": ["desktop-dist/**", "package.json"],
+    "mac": {"target": ["dmg", "zip"], "category": "public.app-category.productivity"},
+    "win": {"target": ["nsis"]},
+    "nsis": {"oneClick": false, "allowToChangeInstallationDirectory": true}
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
@@ -27,6 +54,9 @@
     "@tauri-apps/plugin-opener": "^2.5.5",
     "dompurify": "^3.4.15",
     "marked": "^18.0.12",
-    "sharp": "^0.35.4"
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "sharp": "^0.35.4",
+    "zod": "^3.25.76"
   }
 }

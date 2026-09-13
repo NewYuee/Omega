@@ -19,6 +19,8 @@ createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line)
  else if(m.method==='thread/name/set'){const t=threads.get(m.params.threadId);if(t)t.name=m.params.name;result={};}
  else if(m.method==='thread/delete'){threads.delete(m.params.threadId);result={};}
  else if(m.method==='thread/list')result={data:[...threads.values()]};
+ else if(m.method==='thread/turns/list'){const turns=threads.get(m.params.threadId)?.turns||[];result={data:[...turns].reverse().slice(0,m.params.limit||60),nextCursor:null,backwardsCursor:null};}
+ else if(m.method==='thread/items/list'){const turns=threads.get(m.params.threadId)?.turns||[],turn=turns.find(turn=>turn.id===m.params.turnId);result={data:[...(turn?.items||[])].reverse().map(item=>({turnId:turn.id,item})),nextCursor:null,backwardsCursor:null};}
  else if(m.method==='thread/read'||m.method==='thread/resume')result={thread:threads.get(m.params.threadId),model:'test',reasoningEffort:'low'};
  else if(m.method==='turn/start'){
    const thread=threads.get(m.params.threadId),id='turn-'+(++starts),input=m.params.input?.[0]?.text||'';

@@ -19,6 +19,9 @@ node_modules/
 
 # Web, Rust and native build output (including nested plugin crates)
 /native-dist/
+/web-dist/
+/desktop-dist/
+/release/
 target/
 /dist/
 /build/

@@ -16,12 +16,15 @@ try {
       const input=route.request().postDataJSON();
       if(input?.method==='thread/delete'){deletes++;assert.equal(input.confirmDelete,true);return route.fulfill({status:failDelete?409:200,json:failDelete?{error:'仍有任务正在执行'}:{threadId:'demo',deleted:true}});}
       const json=path==='/api/status'?{ready:true,workspace:'/tmp',active:{},approvals:[]}
+        :path==='/api/health'?{status:'healthy',version:'0.2.0',startedAt:new Date().toISOString(),uptimeSeconds:3600,memory:{rss:50000000,heapUsed:20000000,heapTotal:30000000},bridge:{ready:true,pid:123,pendingRequests:0,pendingApprovals:0},devices:2,activeTurns:0,pendingRestore:false,supervised:true}
+        :path==='/api/automations'?{automations:[]}
         :path==='/api/history'?{thread:{id:'demo',name:'移动端布局与 Emoji 测试',cwd:'/tmp'},outline:[{id:'t',label:'测试问题'}],turn:{id:'t',items:[{id:'u',type:'userMessage',pageText:'能正常显示吗？ 😀 ✅ 🎉 👩‍💻'},{id:'a',type:'agentMessage',pageText:'## 可以 ✅\n\n这是一段用于测试的答复。'}]}}
         :input?.method==='thread/list'?{data:[{id:'demo',name:'移动端布局与 Emoji 测试'},{id:'other',name:'另一个会话'}]}:{thread:{id:'demo'}};
       return route.fulfill({json});
     });
     await page.goto('http://127.0.0.1:4310');
     await page.locator('.exchange').waitFor();
+    if(width===390){await page.evaluate(()=>window.dispatchEvent(new Event('omega:open-control-center')));await page.getByRole('button',{name:'系统与备份'}).click();await page.getByText('运行正常',{exact:true}).waitFor();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.getByRole('button',{name:'关闭'}).click();}
     if(width<701){
       assert.equal(await page.locator('body > aside').isVisible(),false);
       assert.ok((await page.locator('main > header').boundingBox()).height<=54);

@@ -16,8 +16,9 @@ const bundle=await build({entryPoints:['native/entry.js'],bundle:true,format:'es
     b.onLoad({filter:/.*/,namespace:'mock'},args=>({contents:mocks[args.path],loader:'js'}));
     b.onResolve({filter:/^\/vendor\//},args=>({path:path.resolve(args.path.includes('marked')?'node_modules/marked/lib/marked.esm.js':'node_modules/dompurify/dist/purify.es.mjs')}));
   }}]});
-const assets={'/':await readFile('public/index.html'),'/style.css':await readFile('public/style.css'),'/app.js':bundle.outputFiles[0].contents};
-const server=createServer((req,res)=>{res.writeHead(assets[req.url]?200:404,{'content-type':req.url==='/app.js'?'text/javascript':req.url==='/style.css'?'text/css':'text/html'});res.end(assets[req.url]||'');});
+const nativeHtml=(await readFile('public/index.html','utf8')).replace('</head>','<link rel="stylesheet" href="/omega-product.css"></head>');
+const assets={'/':nativeHtml,'/style.css':await readFile('public/style.css'),'/omega-product.css':await readFile('client/src/product.css'),'/app.js':bundle.outputFiles[0].contents};
+const server=createServer((req,res)=>{res.writeHead(assets[req.url]?200:404,{'content-type':req.url==='/app.js'?'text/javascript':req.url?.endsWith('.css')?'text/css':'text/html'});res.end(assets[req.url]||'');});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base='http://127.0.0.1:'+server.address().port;
 const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});

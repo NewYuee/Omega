@@ -25,9 +25,9 @@ export function initUI() {
   };
   new MutationObserver(updateStatus).observe($('connection'),{childList:true,characterData:true,subtree:true});updateStatus();
   for (const [id,name,label] of [['menu-toggle','menu'],['drawer-close','close'],['mobile-new','plus'],['expand-editor','expand'],['new','plus','新建会话'],['add-image','image','图片'],['send','send','发送'],['prev-exchange','left'],['next-exchange','right'],['floating-latest','down','回到最新'],['create-close','close']]) iconButton($(id),name,label);
-  const sidebar=$('sidebar'), drawer=$('conversation-drawer'), composer=$('composer'), editor=$('editor-dialog'), prompt=$('prompt');
-  const sidebarAnchor=document.createComment('sidebar'), composerAnchor=document.createComment('composer');
-  sidebar.before(sidebarAnchor); composer.before(composerAnchor);
+  const sidebar=$('sidebar'), drawer=$('conversation-drawer');
+  const sidebarAnchor=document.createComment('sidebar');
+  sidebar.before(sidebarAnchor);
   const mobile=matchMedia('(max-width:700px)');
   const sidebarPreference='omega-sidebar-collapsed';
   const menuToggle=$('menu-toggle');
@@ -62,42 +62,15 @@ export function initUI() {
   };
   $('drawer-close').onclick=closeDrawer;
   drawer.addEventListener('click',e=>{if(e.target===drawer)closeDrawer();});
-  mobile.addEventListener('change',()=>{if(!mobile.matches){closeDrawer();restoreSidebar();}applySidebarMode();resizePrompt();});
+  mobile.addEventListener('change',()=>{if(!mobile.matches){closeDrawer();restoreSidebar();}applySidebarMode();});
   applySidebarMode();
   $('mobile-new').onclick=()=>$('new').click();
-  let editorScroll=0, conversationScroll=0, conversationAtBottom=false;
-  function resizePrompt() {
-    if(editor.open){prompt.style.height='';prompt.style.overflowY='auto';return;}
-    const scroll=prompt.scrollTop;
-    prompt.style.height='0px';
-    const height=Math.min(prompt.scrollHeight,120);
-    prompt.style.height=Math.max(28,height)+'px';
-    prompt.style.overflowY=prompt.scrollHeight>120?'auto':'hidden';
-    prompt.scrollTop=scroll;
-  }
-  $('expand-editor').onclick=()=>{
-    editorScroll=prompt.scrollTop;
-    const messages=$('messages');conversationScroll=messages.scrollTop;conversationAtBottom=messages.scrollHeight-messages.clientHeight-messages.scrollTop<60;
-    editor.append(composer);editor.showModal();resizePrompt();prompt.focus({preventScroll:true});prompt.scrollTop=editorScroll;
-  };
-  function restoreComposer(){
-    if(composer.parentElement!==editor)return;
-    const scroll=prompt.scrollTop;
-    composerAnchor.after(composer);resizePrompt();prompt.focus({preventScroll:true});prompt.scrollTop=scroll;
-    const messages=$('messages');messages.scrollTop=conversationAtBottom?messages.scrollHeight:conversationScroll;
-  }
-  function closeEditor(){if(editor.open)editor.close();restoreComposer();}
-  $('editor-close').onclick=closeEditor;
-  editor.addEventListener('close',()=>{if(!editor.open)restoreComposer();});
-  editor.addEventListener('cancel',e=>{e.preventDefault();closeEditor();});
-  prompt.addEventListener('input',resizePrompt);
   const viewport=()=>{
     document.documentElement.style.setProperty('--app-height',(window.visualViewport?.height||innerHeight)+'px');
     document.documentElement.style.setProperty('--viewport-top',(window.visualViewport?.offsetTop||0)+'px');
-    resizePrompt();
   };
   window.visualViewport?.addEventListener('resize',viewport);
   window.addEventListener('resize',viewport);
   viewport();
-  return {resizePrompt,closeDrawer,closeEditor};
+  return {closeDrawer};
 }

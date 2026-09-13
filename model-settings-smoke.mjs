@@ -37,13 +37,13 @@ try {
   assert.equal(await mobile.locator('#prompt').inputValue(),'保留草稿');
   await mobile.locator('#editor-close').click();
   await mobile.reload();await mobile.locator('#model-settings').click();
-  await mobile.waitForFunction(model=>document.getElementById('model-select').value===model,model.model);
+  await mobile.locator('#model-select').waitFor();assert.equal(await mobile.locator('#model-select').inputValue(),model.model);
   assert.equal(await mobile.locator('#effort-select').inputValue(),effort);
   await mobile.screenshot({path:'.omega/model-settings-mobile.png'});
   // Another device saves while this dialog is open; stale save cannot overwrite it.
   await api('thread-settings',{threadId:id,expectedRevision:1,settings:{model:model.model,effort:null}});
   await mobile.locator('#model-save').click();
-  await mobile.waitForFunction(()=>document.getElementById('model-error').textContent.includes('其他设备'));
+  await mobile.locator('#model-error').waitFor();assert.match(await mobile.locator('#model-error').textContent(),/其他设备/);
   assert.equal((await api('thread-settings',{threadId:id})).data.settings.effort,null);
   await mobile.locator('#model-cancel').click();
   assert.ok(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
