@@ -4,8 +4,8 @@
   "version": "0.2.0",
   "identifier": "com.omega.workspace",
   "build": {
-    "beforeDevCommand": "npm run native:bundle",
-    "beforeBuildCommand": "npm run native:bundle",
+    "beforeDevCommand": "npm run mobile:bundle",
+    "beforeBuildCommand": "npm run mobile:bundle",
     "frontendDist": "../native-dist"
   },
   "app": {

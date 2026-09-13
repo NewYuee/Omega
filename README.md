@@ -1,10 +1,12 @@
 # Omega
 
-个人多设备在线持续办公 Bot，第一阶段原型。Node.js 接入服务持有一个常驻 Codex App Server，响应式 Web 客户端共享其会话、执行与审批状态。
+个人多设备在线持续办公 Bot。当前版本为 **Omega v0.2 稳定日用版**：Node.js 接入服务持有一个常驻 Codex App Server，响应式 Web 客户端共享其会话、执行与审批状态。版本范围与保留边界见 [v0.2 稳定日用版说明](docs/v0.2-stable.md)。
 
-采用 Grok Bot 的客户端/Coordinator 分层思路，但当前 UI 为独立实现，未复制其受原版 renderer 约束的前端。Web、Windows/macOS Electron 桌面端和 Android Tauri 外壳共享同一套 React 产品层；Android 构建说明见 [原生客户端说明](native/README.md)。
+采用 Grok Bot 的客户端/Coordinator 分层思路，但当前 UI 为独立实现，未复制其受原版 renderer 约束的前端。Web、Windows/macOS Electron 桌面端和 Android Tauri 移动端共享同一套 React 产品层；移动端构建说明见 [Android 客户端说明](native/README.md)。Tauri 不再提供桌面开发或打包入口。
 
 ## 启动
+
+完整的本地开发、后台运行、Web 多设备连接、macOS/Windows Electron 打包和 Android APK 构建流程见 [本地启动与多端编译手册](docs/local-development-and-build.md)。
 
 需要 Node.js 22.18+（群组状态使用内置 SQLite，TypeScript 服务模块使用 Node 原生类型擦除）、已安装且已登录的 Codex CLI。实际验证版本：Node 26.0.0、Codex CLI 0.153.4。
 
@@ -37,7 +39,7 @@ npm run desktop:dev
 npm run desktop:package
 ```
 
-桌面端提供托盘、应用菜单、快捷新建会话/群组、控制中心、侧栏切换和任务完成系统通知。安装包输出到 `release/`。Android 仍使用现有 Tauri 外壳，并通过 `npm run native:android:build -- --debug --target aarch64` 打包共享前端。
+桌面端提供托盘、应用菜单、快捷新建会话/群组、控制中心、侧栏切换和任务完成系统通知。安装包输出到 `release/`。Android 使用 Tauri 移动端容器，并通过 `npm run mobile:android:build -- --debug --target aarch64` 打包共享前端。
 
 ## 自动化、连接与操作中心
 
@@ -102,7 +104,7 @@ ssh -N -L 4310:127.0.0.1:4310 USER@SERVER
 
 第一版流程为：多个需求进入队列 → 协调者为每张需求生成带依赖的任务计划 → 用户确认 → 服务端挑选“依赖完成、成员空闲、目录不冲突”的任务并行派发 → 保存成员原始交付 → 协调者审核并形成交付报告 → 用户验收、要求修改或终止。浏览器关闭不会终止服务端调度，多个设备查看同一状态。
 
-群组、成员实际工作目录、需求队列、原始群消息、摘要、任务依赖、唯一派发标识和交付记录保存在 `.omega/omega.sqlite`。每个成员继续在自己会话原有的项目目录工作，因此一个群组可跨多个项目。服务重启时结果不确定的任务会进入“待核对/已暂停”，不会自动重放。相同或父子目录互斥，不同目录可并行；角色描述不代替 Codex 的沙箱和人工审批。
+群组、成员实际工作目录、需求队列、原始群消息、摘要、任务依赖、唯一派发标识和交付记录保存在 `.omega/omega.sqlite`。每个成员继续在自己会话原有的项目目录工作，因此一个群组可跨多个项目。服务重启后，已有 `turnId` 的成员任务会自动核对原轮次：已完成则收回结果并继续队列，明确中断、过期或无法定位才进入“待核对/已暂停”；Omega 不会为结果未知的写操作自动新建第二轮。相同或父子目录互斥，不同目录可并行；角色描述不代替 Codex 的沙箱和人工审批。
 
 群组可以在 Web 工作台删除。删除前会检查运行任务和待审批；删除后群组需求、任务和协作记录会清理，成员会话及项目文件保持不变，只有该群组专用的协调者会话会一并删除。
 
@@ -150,6 +152,7 @@ node mobile-ui-smoke.mjs
 node delete-smoke.mjs
 node model-settings-smoke.mjs
 node group-ui-smoke.mjs
+npm run test:performance
 ```
 
 `smoke.mjs` 需要运行中的服务，会建立一个测试会话并发起一次简短的真实模型请求（可能消耗额度），验证认证、双连接广播、提交去重、持久历史和 resume。
@@ -171,6 +174,6 @@ node group-ui-smoke.mjs
 - 会话列表首批 60 条；单聊历史通过 App Server 的 `thread/turns/list` 每页读取 60 轮摘要，并通过 `thread/items/list` 只读取当前轮最近 200 个条目。左右箭头可跨页，回到最新会释放旧窗口；浏览器始终只渲染一轮问答，长正文分段展示，不再用 `includeTurns` 拉取整段历史。
 - 支持图片附件，但通用文件上传和文件浏览器尚未实现。Markdown 中的任意远程图片和内嵌 HTML 交互组件不开放。
 - 实时事件不做持久重放；重连以历史快照恢复，短暂工具输出可能仅在最终结果中可见。
-- Codex App Server 异常退出后，Omega 会以 0.5–15 秒指数退避自动拉起并重新初始化。中断时正在执行的单聊或群组任务不会盲目重放：单聊提交保持“结果未知”，群组任务进入待核对状态；连接恢复后页面自动刷新。Omega 主进程本身重启后活动任务同样不会自动重发。
+- Codex App Server 异常退出后，Omega 会以 0.5–15 秒指数退避自动拉起并重新初始化。中断时正在执行的单聊或群组任务不会盲目重放：单聊提交保持“结果未知”；Omega 主进程重启后，群组成员任务会使用持久化的原轮次标识自动核对一次，只有确认已完成才继续，其他情况进入待核对状态。连接恢复后页面自动刷新。
 - 请求去重日志持久保存；内存只保留执行中的请求并限制为 2000 条，任务结束后立即释放，不再随累计会话轮次持续增长。
 - 默认只监听本机。长期无人值守运行、远程域名与手机入口需要部署到你选定的常驻主机。

@@ -1,6 +1,6 @@
 {
   "name": "omega",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "main": "desktop-dist/main.cjs",
@@ -8,23 +8,22 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "tauri": "node native/tauri.mjs",
+    "mobile:tauri": "node native/tauri.mjs",
     "start": "npm run web:build && node server.ts",
     "service:start": "npm run web:build && node scripts/omega-supervisor.mjs",
     "service:install": "node scripts/service-manager.mjs install",
     "service:uninstall": "node scripts/service-manager.mjs uninstall",
     "service:status": "node scripts/service-manager.mjs status",
     "test": "node --test",
+    "test:performance": "node performance-smoke.mjs",
     "typecheck": "tsc",
     "web:build": "node client/build.mjs",
     "desktop:build": "node desktop/build.mjs && npm run web:build",
     "desktop:dev": "npm run desktop:build && electron .",
     "desktop:package": "npm run desktop:build && electron-builder",
-    "native:bundle": "node native/build.mjs",
-    "native:dev": "node native/tauri.mjs dev",
-    "native:build": "node native/tauri.mjs build",
-    "native:android:init": "node native/tauri.mjs android init",
-    "native:android:build": "node native/tauri.mjs android build --apk"
+    "mobile:bundle": "node native/build.mjs",
+    "mobile:android:init": "node native/tauri.mjs android init",
+    "mobile:android:build": "node native/tauri.mjs android build --apk"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

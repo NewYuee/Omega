@@ -100,3 +100,44 @@ test('a missing member thread is a known failure before execution',async()=>{
   assert.doesNotMatch(failed.error,/结果待核对/);
   store.close();
 });
+
+test('restart recovery reattaches a persisted turn without dispatching it twice',async()=>{
+  const store=new GroupStore(':memory:');
+  let group=store.createGroup({name:'恢复执行组',limits:{taskTimeoutMinutes:5}},'coord','/workspace');
+  group=store.addMember(group.id,{threadId:'member-thread',name:'开发',role:'开发',cwd:'/projects/a'});
+  const requirement=store.createRequirement(group.id,{content:'继续完成任务'}).requirement;
+  store.setPlan(requirement.id,'直接执行',[{memberId:group.members[0].id,title:'恢复任务',objective:'完成原任务'}],'plan','raw');
+  store.confirmPlan(group.id,requirement.id);
+  const task=store.getRequirement(requirement.id).tasks[0];
+  store.startTask(task.id,'persisted-dispatch','persisted-turn',5*60*1000);
+  store.recoverInterrupted();store.refreshAllStatuses();
+  assert.equal(store.getTask(task.id).status,'unknown');
+  let starts=0;
+  const orchestrator=new GroupOrchestrator({store,isThreadActive:()=>false,notify:()=>{},
+    startTurn:async()=>{starts++;throw new Error('恢复不能再次派发')},
+    waitTurn:async(threadId,turnId)=>{assert.equal(threadId,'member-thread');assert.equal(turnId,'persisted-turn');return{status:'completed'}},
+    readTurnText:async()=> '服务重启前已经完成的交付'});
+  await orchestrator.resume();
+  await orchestrator.run(group.id,requirement.id);
+  const recovered=store.getRequirement(requirement.id);
+  assert.equal(recovered.status,'completed');
+  assert.equal(recovered.tasks[0].status,'completed');
+  assert.equal(recovered.tasks[0].result,'服务重启前已经完成的交付');
+  assert.equal(recovered.tasks[0].attempt,1);
+  assert.equal(starts,0);
+  store.close();
+});
+
+test('restart recovery keeps an interrupted turn paused for explicit retry',async()=>{
+  const store=new GroupStore(':memory:');
+  let group=store.createGroup({name:'中断恢复组',limits:{taskTimeoutMinutes:5}},'coord','/workspace');
+  group=store.addMember(group.id,{threadId:'member-thread',name:'开发',role:'开发',cwd:'/projects/a'});
+  const requirement=store.createRequirement(group.id,{content:'执行任务'}).requirement;
+  store.setPlan(requirement.id,'执行',[{memberId:group.members[0].id,title:'任务',objective:'完成'}],'plan','raw');store.confirmPlan(group.id,requirement.id);
+  const task=store.getRequirement(requirement.id).tasks[0];store.startTask(task.id,'dispatch','turn',5*60*1000);store.recoverInterrupted();store.refreshAllStatuses();
+  const orchestrator=new GroupOrchestrator({store,isThreadActive:()=>false,notify:()=>{},startTurn:async()=>{throw Error('不应重发')},waitTurn:async()=>({status:'interrupted'}),readTurnText:async()=>''});
+  await orchestrator.resume();
+  const paused=store.getRequirement(requirement.id);
+  assert.equal(paused.status,'paused');assert.equal(paused.tasks[0].status,'unknown');assert.match(paused.error,/interrupted/);
+  store.close();
+});

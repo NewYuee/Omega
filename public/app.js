@@ -3,6 +3,7 @@ import { initUI } from './ui.js';
 import { createModelSettings, effortLabel } from './model-settings.js';
 import { native, apiFetch, initialKey, rememberKey, forgetSessionKey, savedThread, rememberThread, clientDeviceId } from './platform.js';
 import { initGroups } from './groups.js';
+import { createOmegaTransport } from './transport.js';
 const $ = id => document.getElementById(id);
 const ui = initUI();
 const deviceId=clientDeviceId();
@@ -104,29 +105,17 @@ function jumpLatest() {
 async function previousExchange(){const index=outline.findIndex(turn=>turn.id===selectedTurn);if(index>0)return jumpExchange(index-1);if(olderHistoryCursor)await switchHistoryPage('older')}
 async function nextExchange(){const index=outline.findIndex(turn=>turn.id===selectedTurn);if(index>=0&&index<outline.length-1)return jumpExchange(index+1);if(newerHistoryCursors.length)await switchHistoryPage('newer')}
 function error(message) { $('error').textContent = message || ''; $('error').hidden = !message; }
-async function api(route, data) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(),70000);
-  try {
-  const response = await apiFetch('/api/' + route, { signal:controller.signal, method: data ? 'POST' : 'GET', headers: { authorization: `Bearer ${key}`, 'x-omega-device':deviceId, ...(data ? { 'content-type': 'application/json' } : {}) }, ...(data ? { body: JSON.stringify(data) } : {}) });
-  if (response.status === 401 && authenticated) {
+const transport=createOmegaTransport({fetchImpl:apiFetch,getKey:()=>key,deviceId,onUnauthorized:()=>{
+  if(authenticated){
     authenticated = false; streamController?.abort(); clearInterval(refreshTimer); forgetSessionKey();
     globalThis.omegaAppState?.patch({authenticated:false,connected:false});
     $('connection').textContent = '○ 请重新连接'; $('token').value = ''; $('setup').showModal();
   }
-  let result;
-  try { result = await response.json(); }
-  catch(e) { if (controller.signal.aborted) throw e; throw new Error('服务器响应格式异常（HTTP '+response.status+'），请检查网络或 FRP 转发'); }
-  if (!response.ok) throw Object.assign(new Error(result.error),{status:response.status}); return result;
-  } catch(e) {
-    if (controller.signal.aborted) throw new Error('请求等待超过 70 秒，结果尚未确认');
-    throw e;
-  } finally { clearTimeout(timer); }
-}
-const rpc = (method, params = {}, extra = {}) => api('rpc', { method, params, ...extra });
+}});
+const api=transport.request,rpc=transport.rpc;
 globalThis.omegaProductApi=api;
 globalThis.omegaProductContext=()=>({threadId,active:{...active},authenticated});
-globalThis.omegaSystem={backup:async()=>{const response=await apiFetch('/api/backup',{headers:{authorization:`Bearer ${key}`,'x-omega-device':deviceId}});if(!response.ok)throw new Error((await response.json()).error||'备份失败');const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`omega-${new Date().toISOString().slice(0,10)}.omega-backup.gz`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);},restore:async file=>{const response=await apiFetch('/api/restore',{method:'POST',headers:{authorization:`Bearer ${key}`,'x-omega-device':deviceId,'content-type':'application/gzip'},body:file});let result;try{result=await response.json()}catch{throw new Error('恢复接口响应异常')}if(!response.ok)throw new Error(result.error||'恢复失败');return result;}};
+globalThis.omegaSystem={backup:async()=>{const response=await transport.fetch('backup');if(!response.ok)throw new Error((await response.json()).error||'备份失败');const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`omega-${new Date().toISOString().slice(0,10)}.omega-backup.gz`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);},restore:async file=>{const response=await transport.fetch('restore',{method:'POST',headers:{'content-type':'application/gzip'},body:file});let result;try{result=await response.json()}catch{throw new Error('恢复接口响应异常')}if(!response.ok)throw new Error(result.error||'恢复失败');return result;}};
 const preferences=createModelSettings({api,getThreadId:()=>threadId,isSending:()=>sending});
 const groupUI=initGroups({api,rpc,error,closeDrawer:()=>ui.closeDrawer(),getWorkspace:()=>serverWorkspace||$('workspace').textContent,reactForm,
   openThread:id=>{groupUI.switchMode('chats');return select(id);},onModeChange:()=>renderApprovals(),markRead:(scope,id)=>api('read-state',{scope,id})});
@@ -281,7 +270,7 @@ function event(message) {
 async function stream(signal) {
   while (!signal.aborted) {
     try {
-      const response = await apiFetch('/api/events?threadId=' + encodeURIComponent(threadId || ''), { headers: { authorization:`Bearer ${key}`,'x-omega-device':deviceId,...(lastEventId?{'last-event-id':String(lastEventId)}:{}) }, signal });
+      const response = await transport.fetch('events?threadId=' + encodeURIComponent(threadId || ''), { headers: lastEventId?{'last-event-id':String(lastEventId)}:{}, signal });
       if (!response.ok) throw new Error('连接被拒绝，请检查访问密钥'); $('connection').textContent = '● 已连接';globalThis.omegaAppState?.patch({connected:true});
       const reader = response.body.pipeThrough(new TextDecoderStream()).getReader(); let buffer = '';
       while (true) { const {value,done} = await reader.read(); if (done) break; buffer += value; let boundary; while ((boundary = buffer.indexOf('\n\n')) >= 0) { const block = buffer.slice(0,boundary); buffer = buffer.slice(boundary+2); const lines=block.split('\n'),idLine=lines.find(x=>x.startsWith('id: ')),line = lines.find(x => x.startsWith('data: ')); if(idLine){const next=Number(idLine.slice(4));if(Number.isSafeInteger(next)&&next>0)lastEventId=Math.max(lastEventId,next);} if (line) event(JSON.parse(line.slice(6))); } }

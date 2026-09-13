@@ -40,7 +40,24 @@ export class GroupOrchestrator{
   confirm(groupId:string,requirementId:string){const group=this.store.confirmPlan(groupId,requirementId);this.changed(groupId);this.schedule(groupId);return group;}
   retry(groupId:string,requirementId:string){const state=this.store.retry(groupId,requirementId);this.changed(groupId);this.schedule(groupId);return state.group;}
   requestChanges(groupId:string,requirementId:string,input:Row){const group=this.store.requestChanges(groupId,requirementId,input);this.changed(groupId);this.schedule(groupId);return group;}
-  resume(){for(const group of this.store.listGroups())if(group.openRequirementCount)this.schedule(group.id);}
+  async resume(){
+    const recoveries=[];
+    for(const task of this.store.recoverableTasks())if(this.store.reattachTask(task.id)){this.runningTasks.add(task.id);this.changed(task.groupId);recoveries.push(this.recoverTask(task));}
+    await Promise.allSettled(recoveries);
+    for(const group of this.store.listGroups())if(group.openRequirementCount)this.schedule(group.id);
+  }
+  async recoverTask(task:Row){
+    try{
+      const fallback=Number(task.limits?.taskTimeoutMinutes||45)*60000,deadline=Date.parse(task.deadlineAt||''),remaining=Number.isFinite(deadline)?deadline-Date.now():fallback;
+      if(remaining<=0)throw new Error('任务已超过等待时限，原执行结果需要人工核对');
+      const completion=await this.waitTurn(task.threadId,task.turnId,remaining);
+      if(completion.status!=='completed')throw new Error(`执行状态为 ${completion.status||'未知'}`);
+      const result=await this.readTurnText(task.threadId,task.turnId);
+      if(!result.trim())throw new Error('成员没有返回可交接的结果');
+      this.store.completeTask(task.id,result,task.turnId);this.store.resumeRequirementIfRecoverable(task.requirementId);this.changed(task.groupId);
+    }catch(error){const detail=errorMessage(error),missing=/thread not found|missing source rollout|does not exist|找不到对应执行轮次/i.test(detail);this.store.failTask(task.id,missing?'成员会话或执行轮次已无法恢复，请编辑成员关联或手动重试':detail,missing?'failed':'unknown');this.changed(task.groupId);}
+    finally{this.runningTasks.delete(task.id);this.schedule(task.groupId);}
+  }
   schedule(groupId:string){if(this.suspendedGroups.has(groupId))return;this.pendingPumps.add(groupId);queueMicrotask(()=>this.pump(groupId).catch(error=>console.error('[omega scheduler]',error)));}
   suspend(groupId:string){this.suspendedGroups.add(groupId);this.pendingPumps.delete(groupId);}
   unsuspend(groupId:string){this.suspendedGroups.delete(groupId);this.schedule(groupId);}
@@ -64,7 +81,7 @@ export class GroupOrchestrator{
     const plan=parseCoordinatorPlan(text);const tasks=plan.tasks.map((t:Row)=>({...t,objective:plan.tasks.length===1?req.content:t.objective,acceptance:''}));
     this.store.setPlan(requirementId,plan.summary,tasks,turnId,text);this.store.confirmPlan(groupId,requirementId,true);this.changed(groupId);
   }
-  async dispatchTask(groupId:string,raw:Row){this.runningTasks.add(raw.id);const dispatchId=`group-task:${raw.id}:${raw.attempt+1}:${randomUUID()}`;this.store.startTask(raw.id,dispatchId,null);this.changed(groupId);try{const group=this.store.getGroup(groupId,raw.requirement_id),req=group.requirement,member=group.members.find((item:Row)=>item.id===raw.member_id);if(!req||!member)throw new Error('需求或任务成员已不存在');const mode=raw.access_mode==='read'?'read':'write',prompt=memberTaskPrompt(group,req,member,raw);const started=await this.startTurn(member.threadId,prompt,dispatchId,{cwd:member.cwd,accessMode:mode}),turnId=started.turn?.id;if(!turnId)throw new Error('成员任务没有返回执行轮次');this.store.setTaskTurn(raw.id,turnId);this.changed(groupId);const completion=await this.waitTurn(member.threadId,turnId,group.limits.taskTimeoutMinutes*60000);if(completion.status!=='completed')throw new Error(`执行状态为 ${completion.status||'未知'}`);const result=await this.readTurnText(member.threadId,turnId);if(!result.trim())throw new Error('成员没有返回可交接的结果');this.store.completeTask(raw.id,result,turnId);this.changed(groupId);}catch(error){const detail=errorMessage(error),turnStarted=!!this.store.getTask(raw.id)?.turnId,missing=/thread not found|missing source rollout|does not exist/i.test(detail),message=missing?'成员会话不存在或已无法恢复，请编辑该成员并更换关联会话后重试':detail;this.store.failTask(raw.id,message,turnStarted?'unknown':'failed');this.changed(groupId);}finally{this.runningTasks.delete(raw.id);this.schedule(groupId);}}
+  async dispatchTask(groupId:string,raw:Row){this.runningTasks.add(raw.id);const dispatchId=`group-task:${raw.id}:${raw.attempt+1}:${randomUUID()}`,initial=this.store.getGroup(groupId,raw.requirement_id),timeoutMs=initial.limits.taskTimeoutMinutes*60000;this.store.startTask(raw.id,dispatchId,null,timeoutMs);this.changed(groupId);try{const group=this.store.getGroup(groupId,raw.requirement_id),req=group.requirement,member=group.members.find((item:Row)=>item.id===raw.member_id);if(!req||!member)throw new Error('需求或任务成员已不存在');const mode=raw.access_mode==='read'?'read':'write',prompt=memberTaskPrompt(group,req,member,raw);const started=await this.startTurn(member.threadId,prompt,dispatchId,{cwd:member.cwd,accessMode:mode}),turnId=started.turn?.id;if(!turnId)throw new Error('成员任务没有返回执行轮次');this.store.setTaskTurn(raw.id,turnId);this.changed(groupId);const completion=await this.waitTurn(member.threadId,turnId,timeoutMs);if(completion.status!=='completed')throw new Error(`执行状态为 ${completion.status||'未知'}`);const result=await this.readTurnText(member.threadId,turnId);if(!result.trim())throw new Error('成员没有返回可交接的结果');this.store.completeTask(raw.id,result,turnId);this.changed(groupId);}catch(error){const detail=errorMessage(error),turnStarted=!!this.store.getTask(raw.id)?.turnId,missing=/thread not found|missing source rollout|does not exist/i.test(detail),message=missing?'成员会话不存在或已无法恢复，请编辑该成员并更换关联会话后重试':detail;this.store.failTask(raw.id,message,turnStarted?'unknown':'failed');this.changed(groupId);}finally{this.runningTasks.delete(raw.id);this.schedule(groupId);}}
   async reviewTask(groupId:string,requirementId:string,taskId:string){const task=this.store.getTask(taskId);if(task?.status!=='reviewing')return;this.store.completeTask(taskId,task.result,task.turnId);this.changed(groupId);}
   async finalize(groupId:string,requirementId:string){
     const group=this.store.getGroup(groupId,requirementId),req=group.requirement;if(!req||req.status!=='running')return;

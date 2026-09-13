@@ -3,6 +3,11 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../',import.meta.url));
+const args=process.argv.slice(2),mobilePlatform=args[0];
+if(!['android','ios'].includes(mobilePlatform)){
+  console.error('Omega 的 Tauri 工程仅用于移动端。Windows 和 macOS 请使用 npm run desktop:dev 或 npm run desktop:package。');
+  process.exit(2);
+}
 const env = {...process.env};
 const androidSdk=path.join(root,'.toolchains','android-sdk');
 if(existsSync(androidSdk)) {
@@ -19,11 +24,11 @@ if (existsSync(path.join(cargo,'bin',process.platform==='win32'?'cargo.exe':'car
   env.PATH=path.join(cargo,'bin')+path.delimiter+env.PATH;
 }
 const cli = path.join(root,'node_modules','@tauri-apps','cli','tauri.js');
-const child=spawn(process.execPath,[cli,...process.argv.slice(2)],{cwd:root,env,stdio:'inherit'});
+const child=spawn(process.execPath,[cli,...args],{cwd:root,env,stdio:'inherit'});
 child.on('error',e=>{console.error(e.message);process.exitCode=1;});
 child.on('exit',async code=>{
   process.exitCode=code??1;
-  if(code===0 && process.argv[2]==='android' && process.argv[3]==='init') {
+  if(code===0 && mobilePlatform==='android' && args[1]==='init') {
     try {await import('./android-prepare.mjs');}
     catch(e){console.error(e.message);process.exitCode=1;}
   }

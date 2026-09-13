@@ -22,4 +22,4 @@ await build({
 });
 const html = await readFile(path.join(output,'index.html'),'utf8');
 await writeFile(path.join(output,'index.html'),html.replace('initial-scale=1','initial-scale=1,viewport-fit=cover').replace('</head>','<link rel="stylesheet" href="/omega-product.css"></head>'));
-console.log('Native frontend bundled (local assets only).');
+console.log('Mobile frontend bundled (local assets only).');
