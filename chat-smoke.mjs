@@ -15,7 +15,7 @@ try {
         return Reflect.apply(target, ctx, args);
       }});
     });
-    await page.route('**/api/**', route => {
+    let turnStarts=0;await page.route('**/api/**', route => {
       const path = new URL(route.request().url()).pathname;
       if (path === '/api/status') return route.fulfill({ json: { ready: true, workspace: '/tmp', active: {}, approvals: [], devices: 1 } });
       const method = route.request().postDataJSON()?.method;
@@ -25,10 +25,17 @@ try {
         { id: 'a'+i, type: 'agentMessage', text: '## 答复 '+i+'\n\n这是对应问题的历史答复。\n\n'+ '说明内容。'.repeat(60) }
       ] }));
       if (path === '/api/history') return route.fulfill({json:historyPage({id:'demo',name:'测试会话',cwd:'/tmp',turns},route.request().postDataJSON())});
+      if(method==='turn/start')turnStarts++;
       return route.fulfill({ json: method === 'thread/list' ? { data: [{ id: 'demo', name: '测试会话' }] } : { thread: { id: 'demo', name: '测试会话', cwd: '/tmp', turns } } });
     });
     await page.goto('http://127.0.0.1:4310');
     await page.locator('.exchange').first().waitFor();
+    if(width>700){
+      const main=await page.locator('main').boundingBox(),composer=await page.locator('#composer').boundingBox(),reply=await page.locator('.message.assistant').last().boundingBox();assert.ok(composer.width/main.width>.9);assert.ok(reply.width/main.width>.85);
+      assert.equal(await page.locator('#menu-toggle').isVisible(),true);await page.locator('#menu-toggle').click();await page.waitForTimeout(220);
+      const expandedMain=await page.locator('main').boundingBox();assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('sidebar-collapsed')),true);assert.ok(expandedMain.width>main.width+200);assert.equal(await page.locator('#menu-toggle').getAttribute('aria-expanded'),'false');assert.equal(await page.evaluate(()=>localStorage.getItem('omega-sidebar-collapsed')),'1');
+      await page.locator('#menu-toggle').click();await page.waitForTimeout(220);assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('sidebar-collapsed')),false);assert.equal(await page.locator('#menu-toggle').getAttribute('aria-expanded'),'true');
+    }
     assert.equal(await page.locator('#history-select option').count(), 12);
     await page.selectOption('#history-select', '0');
     await page.getByText('历史问题 0',{exact:true}).waitFor();
@@ -44,8 +51,14 @@ try {
     await page.locator('#jump-latest').click();
     await page.getByText('历史问题 11',{exact:true}).waitFor();
     assert.ok(await page.locator('#messages').evaluate(el => el.scrollHeight-el.scrollTop-el.clientHeight < 5));
-    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    assert.equal(await page.locator('.message.user .role').last().isVisible(),false);
+    assert.equal(await page.locator('.message.assistant').last().evaluate(el=>getComputedStyle(el,'::before').content),'"Ω"');
+    await page.locator('#prompt').fill('第一行');await page.locator('#prompt').press('Shift+Enter');assert.equal(await page.locator('#prompt').inputValue(),'第一行\n');assert.equal(turnStarts,0);await page.locator('#prompt').fill('回车发送');await page.locator('#prompt').press('Enter');await page.waitForFunction(()=>document.getElementById('prompt').value==='');assert.equal(turnStarts,1);
     await page.screenshot({ path: '.omega/chat-'+width+'.png' });
+    await page.evaluate(() => window.pushEvent({ method: 'turn/started', params: { threadId: 'demo', turn: { id: 'live-turn' } } }));
+    await page.locator('.omega-typing').waitFor();
+    assert.equal(await page.locator('.typing-dots i').count(),3);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.close();
     console.log('PASS chat history, streaming scroll, tool disclosure, viewport '+width);
   }

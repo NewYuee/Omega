@@ -3,6 +3,7 @@ import { createAttachments } from './attachments.js';
 import { initUI, iconButton } from './ui.js';
 import { createModelSettings, effortLabel } from './model-settings.js';
 import { native, apiFetch, initialKey, rememberKey, forgetSessionKey, savedThread, rememberThread } from './platform.js';
+import { initGroups } from './groups.js';
 const $ = id => document.getElementById(id);
 const ui = initUI();
 let key = initialKey(), threadId = savedThread(), active = {}, approvals = [], items = new Map(), streamController, refreshTimer, loading = false;
@@ -10,6 +11,16 @@ let authenticated = false, canChangeKey = true;
 let followLatest = true, exchanges = [], selectionVersion = 0;
 const expandedTools = new Set();
 const messageNodes = new Map();
+const typingIndicator = document.createElement('div');
+typingIndicator.className = 'omega-typing';
+typingIndicator.setAttribute('role','status');
+typingIndicator.setAttribute('aria-label','Omega 正在处理');
+const typingAvatar = document.createElement('span'); typingAvatar.className = 'typing-avatar'; typingAvatar.textContent = 'Ω';
+const typingBubble = document.createElement('span'); typingBubble.className = 'typing-bubble';
+const typingLabel = document.createElement('span'); typingLabel.className = 'typing-label'; typingLabel.textContent = 'OMEGA 正在处理';
+const typingDots = document.createElement('span'); typingDots.className = 'typing-dots';
+for(let i=0;i<3;i++)typingDots.append(document.createElement('i'));
+typingBubble.append(typingLabel,typingDots); typingIndicator.append(typingAvatar,typingBubble);
 const threadNames = new Map();
 let renameTarget = null, renaming = false, nameRevision = 0;
 const deletedThreads = new Set();
@@ -167,6 +178,9 @@ async function api(route, data) {
 }
 const rpc = (method, params = {}, extra = {}) => api('rpc', { method, params, ...extra });
 const preferences=createModelSettings({api,getThreadId:()=>threadId,isSending:()=>sending});
+const groupUI=initGroups({api,rpc,error,closeDrawer:()=>ui.closeDrawer(),getWorkspace:()=>$('cwd').value||$('workspace').textContent,
+  openThread:id=>{groupUI.switchMode('chats');return select(id);},onModeChange:()=>renderApprovals()});
+$('mobile-new').onclick=()=>groupUI.newAction();
 function controls() { $('stop').hidden = !active[threadId]; $('send').disabled = sending || !attachments.ready || !!active[threadId] || !threadId; preferences.controls(); }
 function itemText(item) {
   if (item.pageText !== undefined) return item.pageText;
@@ -236,6 +250,7 @@ function render() {
   for (const id of messageNodes.keys()) if (!items.has(id)) messageNodes.delete(id);
   attachments.prune();
   renderMetrics(); area.append(metricsPanel);
+  if (active[threadId] && !historyMode) area.append(typingIndicator);
   if (!items.size) { const p = document.createElement('p'); p.className = 'chat-empty'; p.textContent = '在下方发送消息，开始新的工作。'; area.append(p); }
   $('history-select').disabled = !exchanges.length;
   if (stick) area.scrollTop = area.scrollHeight;
@@ -311,7 +326,7 @@ async function select(id, closeMenu=true) {
 }
 function renderApprovals() {
   $('approvals').replaceChildren();
-  for (const request of approvals.filter(x => !x.params?.threadId || x.params.threadId === threadId)) {
+  for (const request of approvals.filter(x => groupUI.isGroupMode() || !x.params?.threadId || x.params.threadId === threadId)) {
     const box = document.createElement('div'); box.className = 'approval'; const title = document.createElement('strong'); title.textContent = '需要你的决定'; const detail = document.createElement('pre'); detail.textContent = request.params.command || request.params.reason || JSON.stringify(request.params, null, 2); box.append(title, detail);
     const send = async result => { try { await api('answer', { id: request.id, result }); } catch (e) { error(e.message); } };
     if (/item\/(commandExecution|fileChange)\/requestApproval/.test(request.method)) {
@@ -326,6 +341,8 @@ function renderApprovals() {
 function event(message) {
   const { method, params: p = {} } = message;
   if (['thread/deleted','omega/thread-deleted'].includes(method)) { removeThread(p.threadId); return; }
+  if(method==='omega/group-updated'){groupUI.onGroupUpdated(p.groupId);return;}
+  if(method==='omega/group-deleted'){groupUI.onGroupDeleted(p.groupId);return;}
   if (deletedThreads.has(p.threadId)) return;
   if(method==='omega/model-settings'){if(p.threadId===threadId)preferences.apply(p.settings);return;}
   if(method==='omega/turn-model'){if(p.threadId===threadId&&p.turnId===selectedTurn){turnModel=p.settings;renderMetrics();}return;}
@@ -379,7 +396,7 @@ async function connect() {
   authenticated = true; canChangeKey = status.canChangeKey !== false;
   streamController?.abort(); streamController = new AbortController(); stream(streamController.signal);
   await list(); if (threadId) await select(threadId,false); renderApprovals(); controls();
-  clearInterval(refreshTimer); refreshTimer = setInterval(async () => { try { const s = await api('status'); active=s.active; approvals=s.approvals; $('devices').textContent = `${s.devices} 个在线窗口`; controls(); } catch {} },15000);
+  clearInterval(refreshTimer); refreshTimer = setInterval(async () => { try { const s = await api('status'); active=s.active; approvals=s.approvals; $('devices').textContent = `${s.devices} 个在线窗口`; controls(); if(groupUI.isGroupMode())groupUI.refresh().catch(()=>{}); } catch {} },15000);
 }
 function showKeySummary(saved = false) {
   $('key-summary').hidden = false;
@@ -453,7 +470,7 @@ $('composer').onsubmit = async e => {
   finally { sending = false; attachments.refresh(); iconButton($('send'),'send','发送'); controls(); }
 };
 $('stop').onclick = async () => { try { await rpc('turn/interrupt',{threadId,turnId:active[threadId]}); } catch(e) {error(e.message);} };
-$('prompt').onkeydown = e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') $('composer').requestSubmit(); };
+$('prompt').onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('composer').requestSubmit(); } };
 // Resuming only resyncs server state; never re-submits a message or clears the composer.
 let resumeTimer, resuming = false;
 function resumeConnection() {
@@ -465,7 +482,7 @@ function resumeConnection() {
     try {
       streamController?.abort(); streamController=new AbortController(); stream(streamController.signal);
       const status=await api('status'); active=status.active; approvals=status.approvals;
-      await list(); if(threadId)await hydrate(); renderApprovals(); controls();
+      await list(); if(threadId)await hydrate(); if(groupUI.isGroupMode())await groupUI.refresh(); renderApprovals(); controls();
     } catch(e) { error(e.message); }
     finally { resuming=false; }
   },250);

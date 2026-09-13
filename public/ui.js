@@ -29,14 +29,41 @@ export function initUI() {
   const sidebarAnchor=document.createComment('sidebar'), composerAnchor=document.createComment('composer');
   sidebar.before(sidebarAnchor); composer.before(composerAnchor);
   const mobile=matchMedia('(max-width:700px)');
+  const sidebarPreference='omega-sidebar-collapsed';
+  const menuToggle=$('menu-toggle');
+  const savedSidebarState=()=>{try{return localStorage.getItem(sidebarPreference)==='1';}catch{return false;}};
+  const saveSidebarState=collapsed=>{try{localStorage.setItem(sidebarPreference,collapsed?'1':'0');}catch{}};
+  function updateMenuToggle(){
+    if(mobile.matches){
+      menuToggle.setAttribute('aria-controls','conversation-drawer');
+      menuToggle.setAttribute('aria-expanded',String(drawer.open));
+      menuToggle.setAttribute('aria-label',drawer.open?'关闭列表':'打开列表');
+      menuToggle.title=drawer.open?'关闭列表':'打开列表';
+      return;
+    }
+    const collapsed=document.body.classList.contains('sidebar-collapsed');
+    menuToggle.setAttribute('aria-controls','sidebar');
+    menuToggle.setAttribute('aria-expanded',String(!collapsed));
+    menuToggle.setAttribute('aria-label',collapsed?'展开侧栏':'收起侧栏');
+    menuToggle.title=collapsed?'展开侧栏':'收起侧栏';
+  }
+  function applySidebarMode(){
+    document.body.classList.toggle('sidebar-collapsed',!mobile.matches&&savedSidebarState());
+    updateMenuToggle();
+  }
   const closeDrawer=()=>{ if(drawer.open)drawer.close(); restoreSidebar(); };
-  function restoreSidebar(){sidebarAnchor.after(sidebar);$('menu-toggle').setAttribute('aria-expanded','false');}
+  function restoreSidebar(){sidebarAnchor.after(sidebar);updateMenuToggle();}
   drawer.addEventListener('close',()=>{if(!drawer.open)restoreSidebar();});
   drawer.addEventListener('cancel',e=>{e.preventDefault();closeDrawer();});
-  $('menu-toggle').onclick=()=>{drawer.append(sidebar);drawer.showModal();$('menu-toggle').setAttribute('aria-expanded','true');$('drawer-close').focus();};
+  menuToggle.onclick=()=>{
+    if(mobile.matches){drawer.append(sidebar);drawer.showModal();updateMenuToggle();$('drawer-close').focus();return;}
+    const collapsed=document.body.classList.toggle('sidebar-collapsed');
+    saveSidebarState(collapsed);updateMenuToggle();
+  };
   $('drawer-close').onclick=closeDrawer;
   drawer.addEventListener('click',e=>{if(e.target===drawer)closeDrawer();});
-  mobile.addEventListener('change',()=>{if(!mobile.matches){closeDrawer();restoreSidebar();}resizePrompt();});
+  mobile.addEventListener('change',()=>{if(!mobile.matches){closeDrawer();restoreSidebar();}applySidebarMode();resizePrompt();});
+  applySidebarMode();
   $('mobile-new').onclick=()=>$('new').click();
   let editorScroll=0, conversationScroll=0, conversationAtBottom=false;
   function resizePrompt() {
