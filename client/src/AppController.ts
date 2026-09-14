@@ -6,6 +6,8 @@ import { createModelSettings } from './model-settings.js';
 import { native, apiFetch, initialKey, rememberKey, forgetSessionKey, savedThread, rememberThread, clientDeviceId } from './platform.js';
 import { initGroups } from './groups.js';
 import { createOmegaTransport } from './transport.js';
+import { createPastedTextTransport } from './pasted-content.js';
+import type {RichPastePayload} from './RichPasteEditor.js';
 import { isThreadWriterConflict,threadWriterBusyMessage } from '../../src/shared/thread-errors.js';
 type JsonRecord = Record<string, any>;
 type ControllerError = Error & {status?:number;code?:string;threadId?:string};
@@ -88,17 +90,18 @@ const transport=createOmegaTransport({fetchImpl:apiFetch,getKey:()=>key,deviceId
   }
 }});
 const api=transport.request,rpc=transport.rpc;
+const pastedText=createPastedTextTransport((route,options)=>transport.fetch(route,options as any));
 window.omegaProductApi=api;
 window.omegaProductContext=()=>session.context();
 window.omegaSystem={backup:async()=>{const response=await transport.fetch('backup');if(!response.ok)throw new Error(((await response.json()) as JsonRecord).error||'备份失败');const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=`omega-${new Date().toISOString().slice(0,10)}.omega-backup.gz`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);},restore:async (file:File)=>{const response=await transport.fetch('restore',{method:'POST',headers:{'content-type':'application/gzip'},body:file});let result:JsonRecord;try{result=await response.json() as JsonRecord}catch{throw new Error('恢复接口响应异常')}if(!response.ok)throw new Error(result.error||'恢复失败');return result as {files:number;restartRequired:boolean};}};
 const preferences=createModelSettings({api,getThreadId:()=>session.snapshot.threadId,isSending:()=>sending});
-const groupUI=initGroups({api,rpc,error,closeDrawer:()=>window.omegaReactWorkspace?.closeSidebar(),getWorkspace:()=>session.snapshot.serverWorkspace,openDialog,
+const groupUI=initGroups({api,rpc,error,pastedText,closeDrawer:()=>window.omegaReactWorkspace?.closeSidebar(),getWorkspace:()=>session.snapshot.serverWorkspace,openDialog,
   openThread:(id:string)=>{groupUI.switchMode('chats');return select(id);},onModeChange:()=>renderApprovals(),markRead:(scope:string,id:string)=>api('read-state',{scope,id})});
 function applyReadState(state:JsonRecord){conversations.applyReadState(state);for(let index=sessionStorage.length-1;index>=0;index--){const name=sessionStorage.key(index);if(name?.startsWith('omega-group-unread:'))sessionStorage.removeItem(name);}for(const id of state?.unread?.groups||[])if(state?.positions?.groups?.[id])sessionStorage.setItem('omega-group-unread:'+id,state.positions.groups[id]);renderThreadSidebar();groupUI.applyReadState(state);}
 async function syncReadState(){applyReadState(await api('read-state'));}
 async function markThreadRead(id:string|null){if(!id)return;conversations.markRead(id);renderThreadSidebar();try{applyReadState(await api<JsonRecord>('read-state',{scope:'thread',id}));}catch{}}
 function renderComposer(){
-  const current=session.snapshot;window.omegaReactComposer?.render({sending,enabled:!!current.threadId,active:!!current.active[current.threadId!],attachmentsReady:attachments.ready,attachments:attachments.records,workspace:current.composerWorkspace||current.serverWorkspace},{submit:sendMessage,stop:stopMessage,addFiles:(files:File[])=>attachments.ingest(files),removeAttachment:(index:number)=>attachments.remove(index),openModelSettings:()=>preferences.open(),report:(message:string)=>error(message)});
+  const current=session.snapshot;window.omegaReactComposer?.render({sending,enabled:!!current.threadId,active:!!current.active[current.threadId!],attachmentsReady:attachments.ready,attachments:attachments.records,workspace:current.composerWorkspace||current.serverWorkspace},{submit:sendMessage,stop:stopMessage,addFiles:(files:File[])=>attachments.ingest(files),removeAttachment:(index:number)=>attachments.remove(index),openModelSettings:()=>preferences.open(),report:(message:string)=>error(message),...pastedText});
 }
 function controls() { renderComposer();preferences.controls(); }
 window.addEventListener('omega:react-composer-ready',controls);
@@ -221,18 +224,18 @@ if(native){const nativeAdapter=native;$<HTMLFormElement>('connect-form').onsubmi
 async function openSettings(){if(!session.snapshot.authenticated)return openConnection();if(native)return $<HTMLDialogElement>('key-settings').showModal();if(!session.snapshot.canChangeKey)return openDialog('connectionInfo',{});await openDialog('accessKey',{onSubmit:async (values:JsonRecord)=>{const next=values.accessKey;await api('access-key',{accessKey:next});key=next;lifecycle.restartStream();session.setConnection(true,true,'密钥已保存');await rememberKey(key);}});}
 function openNewThread(){return openDialog('newThread',{cwd:session.snapshot.serverWorkspace,onSubmit:async (values:JsonRecord)=>{const result=await rpc<JsonRecord>('thread/start',{cwd:values.cwd});await select(result.thread.id);}}).catch(cause=>error(errorValue(cause).message));}
 patchState({shellActions:{switchMode:(mode:'chats'|'groups')=>groupUI.switchMode(mode),newAction:()=>groupUI.isGroupMode()?groupUI.newGroup():openNewThread(),openSettings}});
-async function sendMessage(value:string) {
-  const text=value.trim(), imageIds=attachments.ids, target=session.snapshot.threadId;
+async function sendMessage(value:RichPastePayload) {
+  const text=value.text.trim(),pasteIds=value.pasteIds,imageIds=attachments.ids, target=session.snapshot.threadId;
   if ((!text && !imageIds.length) || !target || sending || !attachments.ready || session.snapshot.active[target]) return false;
   sending = true;
   let requested = false;
   try {
     attachments.refresh();jumpLatest();error('');controls();
-    const fingerprint = JSON.stringify({target,text,imageIds});
+    const fingerprint = JSON.stringify({target,text,imageIds,pasteIds});
     if (pendingSubmission?.fingerprint !== fingerprint) pendingSubmission = {fingerprint,id:submissionId(),settingsRevision:preferences.revision};
     const id = pendingSubmission.id;
     requested = true;
-    await rpc('turn/start',{threadId:target,input:text ? [{type:'text',text}] : []},{submissionId:id,imageIds,settingsRevision:pendingSubmission.settingsRevision});
+    await rpc('turn/start',{threadId:target,input:text ? [{type:'text',text}] : []},{submissionId:id,imageIds,pasteIds,settingsRevision:pendingSubmission.settingsRevision});
     pendingSubmission = null;
     if (target === session.snapshot.threadId) attachments.clear();
     return true;

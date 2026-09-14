@@ -30,6 +30,16 @@ test('group records preserve plan, dispatch and delivery evidence',()=>{
   store.close();
 });
 
+test('group requirements retain compact pasted-file references without copying their bodies',()=>{
+  const {store,group}=fixture(),paste={id:'1700000000000-12345678-1234-4123-8123-123456789abc',chars:11402,bytes:12000,createdAt:1700000000000,expiresAt:1700604800000};
+  const {requirement}=store.createRequirement(group.id,{content:'参考 [Pasted Content 11402 chars] 完成开发',pasteRefs:[paste]});
+  assert.deepEqual(requirement.pastedTexts,[paste]);
+  const message=store.getGroup(group.id).messages.at(-1);
+  assert.equal(message.content,'参考 [Pasted Content 11402 chars] 完成开发');
+  assert.deepEqual(message.reference.pastedTexts,[paste]);
+  store.close();
+});
+
 test('a session can belong to only one active group and running members cannot leave',()=>{
   const {store,group,member}=fixture();
   const second=store.createGroup({name:'Second',cwd:'/workspace'},'coordinator-2','/workspace');

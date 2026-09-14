@@ -198,9 +198,37 @@ adb install -r APK路径
 
 调试包只用于本地测试。发布到应用商店前必须创建并妥善保管自己的签名密钥，配置 release signing，再生成 AAB/APK；签名文件和密码不能提交到仓库。
 
+构建经过优化、但无需手动执行签名工具的本地 Release APK：
+
+```sh
+npm run mobile:android:build:local-release -- --target aarch64
+```
+
+该命令会构建 Release、执行 `zipalign`，并优先使用 `OMEGA_ANDROID_*` 环境变量指定的证书签名；未配置时使用或自动创建本机 Android 调试证书。最终文件名为 `Omega-aarch64-release-local-signed.apk`。这是可安装的 Release 构建，但本机调试证书不适合应用商店发布。
+
+## 6. GitHub Actions 构建
+
+`.github/workflows/build.yml` 仅接受仓库所有者触发，在所有者推送到 `main`、推送 `v*` 标签或手动启动时运行。外部贡献者提交 Pull Request 不会自动消耗构建额度；即使拥有协作权限的其他账号尝试手动触发，构建任务也会被所有者身份门禁跳过。
+
+- TypeScript 检查、测试和 Web 构建；
+- ARM64 Android Release APK；
+- macOS Electron DMG/ZIP；
+- Windows x64 Electron NSIS 安装程序。
+
+在 GitHub 仓库的 **Actions → Build Omega → Run workflow** 可手动构建。完成后从该次运行的 **Artifacts** 下载，产物默认保留 14 天。
+
+Android 未配置 Secrets 时使用该次 Runner 临时生成的证书，适合安装验证，但不同 CI 运行产物可能不能彼此覆盖安装。需要稳定升级或正式分发时，在仓库 Actions Secrets 中配置：
+
+- `ANDROID_KEYSTORE_BASE64`：签名文件的 Base64 内容；
+- `ANDROID_KEY_ALIAS`；
+- `ANDROID_STORE_PASSWORD`；
+- `ANDROID_KEY_PASSWORD`。
+
+macOS 和 Windows 当前生成未做开发者身份签名的安装包，系统可能显示未知开发者提示。正式公开分发需要另外配置 Apple Developer、Notarization 和 Windows Authenticode 凭据。
+
 Tauri 启动包装器只接受 Android/iOS 子命令；直接调用桌面 `dev` 或 `build` 会失败并提示改用 Electron。
 
-## 6. 发布前检查清单
+## 7. 发布前检查清单
 
 1. 确认 `git status` 不包含 `.omega/`、`web-dist/`、`desktop-dist/`、`release/`、`src-tauri/target/` 或 Android 构建产物。
 2. 执行 `npm ci`、`npm run typecheck`、`npm test`、`npm run web:build`。
@@ -209,7 +237,7 @@ Tauri 启动包装器只接受 Android/iOS 子命令；直接调用桌面 `dev` 
 5. 正式外发前配置 macOS、Windows、Android 各自的签名流程。
 6. 记录版本号、提交号、构建机器、产物校验值和已知问题。
 
-## 7. 常见问题
+## 8. 常见问题
 
 - 页面打不开：确认 `npm run service:status` 或前台服务输出，检查 4310 端口和日志。
 - 提示 403：服务器地址或密钥不匹配；FRP/代理还需保留 Authorization，并正确转发 SSE。

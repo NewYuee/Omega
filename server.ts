@@ -6,6 +6,7 @@ import path from 'node:path';
 import { Bridge } from './src/server/bridge.ts';
 import { historyPage, paginatedHistoryPage } from './src/server/history.ts';
 import { ImageStore, imageInfo, MAX_IMAGE_BYTES } from './src/server/images.ts';
+import {PastedTextStore,MAX_PASTED_TEXT_BYTES} from './src/server/pasted-content.ts';
 import { TurnMetrics } from './src/server/metrics.ts';
 import { ModelSettings } from './src/server/model-settings.ts';
 import { GroupStore } from './src/server/groups-store.ts';
@@ -28,12 +29,14 @@ await metrics.initialize();
 let metricsQueue = Promise.resolve();
 const images = new ImageStore(path.join(state,'images'));
 await images.initialize();
+const pastedTexts=new PastedTextStore(path.join(state,'pasted-text'));
+await pastedTexts.initialize();
 const groups = new GroupStore(path.join(state,'omega.sqlite'));
 const automationStore = new AutomationStore(path.join(state,'automations.sqlite'));
 const readState = new ReadStateStore(path.join(state,'read-state.sqlite'));
 const searchStore = new SearchStore(path.join(state,'search.sqlite'));
 async function cleanImages() {
-  try { const removed = await images.cleanup(); if (removed) console.log('Expired Omega image files removed:',removed); }
+  try { const [removedImages,removedPastes] = await Promise.all([images.cleanup(),pastedTexts.cleanup()]); if (removedImages) console.log('Expired Omega image files removed:',removedImages);if(removedPastes)console.log('Expired Omega pasted text files removed:',removedPastes); }
   catch (e:any) { console.error('Image cleanup failed:',e.message); }
 }
 await cleanImages();
@@ -72,9 +75,12 @@ let ledger:Record<string,any>=Object.create(null);
 try { Object.assign(ledger, JSON.parse(await readFile(ledgerPath, 'utf8'))); } catch (e:any) { if (e.code !== 'ENOENT') throw e; }
 const turnImages=new Map<string,string[]>();
 const pendingImages=new Map<string,string[]>();
+const turnPastes=new Map<string,Row[]>();
+const pendingPastes=new Map<string,Row[]>();
 for (const entry of Object.values(ledger)) {
   if(entry.threadId&&entry.result?.turn?.id&&entry.modelSettings)turnSettings.set(entry.threadId+':'+entry.result.turn.id,entry.modelSettings);
   if (entry.threadId && entry.result?.turn?.id && entry.imageIds?.length) turnImages.set(entry.threadId+':'+entry.result.turn.id,entry.imageIds);
+  if (entry.threadId && entry.result?.turn?.id && entry.pasteRefs?.length) turnPastes.set(entry.threadId+':'+entry.result.turn.id,entry.pasteRefs);
 }
 function attachments(item:Row,threadId:string,turnId:string) {
   const local = images.fromContent(item.content);
@@ -84,8 +90,9 @@ function attachments(item:Row,threadId:string,turnId:string) {
 }
 function publicItem(item:Row,threadId:string,turnId:string) {
   if (item.type !== 'userMessage') return item;
-  return {...item,images:attachments(item,threadId,turnId),content:((item.content||[]) as Row[]).map(x =>
-    ['image','localImage'].includes(x.type) ? {type:'image'} : x)};
+  const pasteRefs:Row[]=ledger[item.id]?.pasteRefs||turnPastes.get(threadId+':'+turnId)||pendingPastes.get(threadId)||[];
+  return {...item,images:attachments(item,threadId,turnId),pastedTexts:pasteRefs,content:((item.content||[]) as Row[]).flatMap(x =>
+    ['image','localImage'].includes(x.type) ? [{type:'image'}] : x.type==='text'&&String(x.text||'').startsWith('\n\n<omega_pasted_files>')?[]:[x])};
 }
 function indexSearchItem(item:Row,threadId:string,turnId:string,title=threadId){if(!item||!['userMessage','agentMessage'].includes(item.type))return;const content=item.type==='agentMessage'?item.text:(item.content||[]).map((part:Row)=>part.text||'').join('\n');if(content?.trim())searchStore.index({scope:'thread',id:threadId,anchor:turnId,title,content});}
 let ledgerWrite = Promise.resolve();
@@ -233,6 +240,8 @@ async function readTurnText(threadId:string,turnId:string){
 }
 
 orchestrator=new GroupOrchestrator({store:groups,startTurn:startManagedTurn,waitTurn,readTurnText,
+  readPastes:refs=>pastedTexts.contents(refs),
+  interruptTurn:(threadId,turnId)=>bridge.request('turn/interrupt',{threadId,turnId}),
   isThreadActive:id=>active.has(id),isWorkspaceBusy:(cwd,groupId,accessMode='write')=>{
     if(groups.runningConflict(cwd,null,accessMode))return true;
     for(const entry of activeCwds.values())if(modesConflict(accessMode,entry.accessMode)&&pathsOverlap(cwd,entry.cwd))return true;
@@ -268,6 +277,15 @@ const server = http.createServer(async (req, res) => {
         const contents = await readFile(file);
         res.writeHead(200,{'content-type':'image/jpeg','cache-control':'no-store','content-length':contents.length});
         return res.end(contents);
+      }
+      if(url.pathname.startsWith('/api/pasted-text/')&&req.method==='GET'){
+        const value=await pastedTexts.resolve(url.pathname.slice('/api/pasted-text/'.length));
+        res.writeHead(200,{'content-type':'text/plain; charset=utf-8','cache-control':'no-store','content-length':value.bytes});return res.end(value.text);
+      }
+      if(url.pathname==='/api/pasted-text'&&req.method==='POST'){
+        if(!String(req.headers['content-type']||'').toLowerCase().startsWith('text/plain'))return json(res,415,{error:'仅支持纯文本粘贴内容'});
+        if(Number(req.headers['content-length'])>MAX_PASTED_TEXT_BYTES)return json(res,413,{error:'单段粘贴文本不得超过 512 KB'});
+        return json(res,201,await pastedTexts.upload(await rawBody(req,MAX_PASTED_TEXT_BYTES)));
       }
       if(url.pathname==='/api/backup'&&req.method==='GET'){if(active.size||bridge.approvals.size)throw Object.assign(new Error('仍有任务执行或等待审批，暂不能创建一致性备份'),{status:409});const archive=createBackup(state),name=`omega-${new Date().toISOString().slice(0,10)}.omega-backup.gz`;res.writeHead(200,{'content-type':'application/gzip','content-disposition':`attachment; filename="${name}"`,'content-length':archive.length,'cache-control':'no-store'});return res.end(archive);}
       if(url.pathname==='/api/restore'&&req.method==='POST'){if(active.size||bridge.approvals.size)throw Object.assign(new Error('仍有任务执行或等待审批，暂不能恢复备份'),{status:409});return json(res,200,stageRestore(state,await rawBody(req)));}
@@ -418,11 +436,12 @@ const server = http.createServer(async (req, res) => {
           result=groups.updateMember(input.groupId,input.memberId,update,input.requirementId);
         }
         else if(input.action==='setConcurrency'){result=groups.setConcurrency(input.groupId,input.maxConcurrency,input.requirementId);orchestrator.schedule(input.groupId);}
-        else if(input.action==='submit')result=orchestrator.submit(input.groupId,input);
+        else if(input.action==='submit'){input.pasteRefs=await pastedTexts.refs(input.pasteIds||[]);result=orchestrator.submit(input.groupId,input);}
         else if(input.action==='updateTask')result=groups.updateDraftTask(input.groupId,input.requirementId,input);
         else if(input.action==='confirm')result=orchestrator.confirm(input.groupId,input.requirementId);
         else if(input.action==='retry')result=orchestrator.retry(input.groupId,input.requirementId);
         else if(input.action==='requestChanges')result=orchestrator.requestChanges(input.groupId,input.requirementId,input);
+        else if(input.action==='resolveDecision')result=orchestrator.resolveDecision(input.groupId,input.taskId,input);
         else if(input.action==='stop'){
           const group=groups.getGroup(input.groupId,input.requirementId),task=group.requirement?.tasks?.find((item:Row)=>item.status==='running'||item.status==='reviewing');
           const member=task&&group.members.find((item:Row)=>item.id===task.memberId);
@@ -432,7 +451,13 @@ const server = http.createServer(async (req, res) => {
           await bridge.request('turn/interrupt',{threadId:target,turnId});result=groups.getGroup(input.groupId,input.requirementId);
         }
         else if(input.action==='accept')result=groups.accept(input.groupId,input.requirementId);
-        else if(input.action==='cancel')result=groups.cancel(input.groupId,input.requirementId);
+        else if(input.action==='cancel'){
+          const before=groups.getGroup(input.groupId,input.requirementId),targets=new Map<string,string>();
+          for(const task of before.requirement?.tasks||[]){const member=before.members.find((item:Row)=>item.id===task.memberId),turnId=member&&active.get(member.threadId);if(task.status==='running'&&member&&turnId&&turnId!=='starting')targets.set(member.threadId,turnId);}
+          if(['plan_drafting','finalizing'].includes(before.requirement?.status)){const turnId=active.get(before.coordinatorThreadId);if(turnId&&turnId!=='starting')targets.set(before.coordinatorThreadId,turnId);}
+          result=groups.cancel(input.groupId,input.requirementId);orchestrator.changed(input.groupId);
+          await Promise.allSettled([...targets].map(([threadId,turnId])=>bridge.request('turn/interrupt',{threadId,turnId})));
+        }
         else throw new Error('不支持的群组操作');
         broadcast({method:'omega/group-updated',params:{groupId:result.id}});
         return json(res,200,{group:result});
@@ -521,7 +546,7 @@ const server = http.createServer(async (req, res) => {
       if (input.method === 'turn/start') {
         const id = input.submissionId;
         if (typeof id !== 'string' || id.length > 100) throw new Error('submissionId required');
-        const fingerprint = JSON.stringify({threadId:params.threadId,input:params.input,...(input.imageIds?.length ? {imageIds:input.imageIds} : {}),...(input.settingsRevision!==undefined?{settingsRevision:input.settingsRevision}:{})});
+        const fingerprint = JSON.stringify({threadId:params.threadId,input:params.input,...(input.imageIds?.length ? {imageIds:input.imageIds} : {}),...(input.pasteIds?.length?{pasteIds:input.pasteIds}:{}),...(input.settingsRevision!==undefined?{settingsRevision:input.settingsRevision}:{})});
         if (ledger[id] && ledger[id].fingerprint !== fingerprint) return json(res,409,{error:'Submission ID was already used for different input'});
         if (submissions.has(id)) return json(res, 200, await submissions.get(id));
         if (ledger[id]) {
@@ -539,7 +564,8 @@ const server = http.createServer(async (req, res) => {
         const savedSettings=await modelSettings.read(params.threadId);
         if(input.settingsRevision!==undefined&&input.settingsRevision!==savedSettings.revision)return json(res,409,{error:'模型设置已在其他设备修改，请核对最新设置后发送'});
         const overrides:Row=await modelSettings.resolve(savedSettings,!!input.imageIds?.length);
-        const turnInput = await images.turnInput(params.input,input.imageIds);
+        const pasteRefs=await pastedTexts.refs(input.pasteIds||[]);
+        const turnInput = await images.turnInput(await pastedTexts.turnInput(params.input,input.pasteIds),input.imageIds);
         if((await modelSettings.read(params.threadId)).revision!==savedSettings.revision)return json(res,409,{error:'模型设置已更新，请核对后重新发送'});
         // Validation touches disk; recheck concurrency after that await.
         if (deletingThread) return json(res,409,{error:'正在删除会话，请稍后再试'});
@@ -550,10 +576,11 @@ const server = http.createServer(async (req, res) => {
         if(workspaceConflict)return json(res,409,{error:workspaceConflict.message});
         active.set(params.threadId, 'starting');
         const imageIds = input.imageIds || [];
+        pendingPastes.set(params.threadId,pasteRefs);
         pendingImages.set(params.threadId,imageIds);
         const requestedSettings=overrides.model?overrides:nativeSettings.get(params.threadId)||null;
         if(requestedSettings)pendingModels.set(params.threadId,requestedSettings);
-        ledger[id] = {fingerprint,createdAt:Date.now(),threadId:params.threadId,imageIds,modelSettings:requestedSettings};
+        ledger[id] = {fingerprint,createdAt:Date.now(),threadId:params.threadId,imageIds,pasteRefs,modelSettings:requestedSettings};
         const operation=saveLedger().then(()=>bridge.request(input.method,{threadId:params.threadId,input:turnInput,clientUserMessageId:id,...overrides})).then(async(result:Row)=>{
           ledger[id].result=result;
           if(requestedSettings&&result.turn?.id){
@@ -562,10 +589,11 @@ const server = http.createServer(async (req, res) => {
             broadcast({method:'omega/turn-model',params:{threadId:params.threadId,turnId:result.turn.id,settings:requestedSettings}});
           }
           if (imageIds.length && result.turn?.id) turnImages.set(params.threadId+':'+result.turn.id,imageIds);
+          if(pasteRefs.length&&result.turn?.id)turnPastes.set(params.threadId+':'+result.turn.id,pasteRefs);
           await saveLedger(); return result;
         }).finally(() => {
           submissions.delete(id);
-          if (active.get(params.threadId) === 'starting') { active.delete(params.threadId); activeCwds.delete(params.threadId); pendingImages.delete(params.threadId); pendingModels.delete(params.threadId); }
+          if (active.get(params.threadId) === 'starting') { active.delete(params.threadId); activeCwds.delete(params.threadId); pendingImages.delete(params.threadId);pendingPastes.delete(params.threadId); pendingModels.delete(params.threadId); }
         });
         submissions.set(id, operation);
         return json(res, 200, await operation);
@@ -591,4 +619,5 @@ const server = http.createServer(async (req, res) => {
   }
 });
 server.listen(Number(process.env.PORT || 4310), process.env.OMEGA_HOST || '127.0.0.1', () => console.log(`Omega: http://${process.env.OMEGA_HOST || '127.0.0.1'}:${process.env.PORT || 4310}\nAccess key file: ${tokenPath}\nWorkspace: ${workspace}`));
-for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => { clearInterval(imageCleanupTimer); automationService.close(); for (const client of clients) client.end(); server.close(); bridge.close(); groups.close(); automationStore.close(); readState.close(); searchStore.close(); });
+let shuttingDown=false;
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => {if(shuttingDown)return;shuttingDown=true;clearInterval(imageCleanupTimer);automationService.close();for(const client of clients)client.end();server.close();bridge.close();groups.close();automationStore.close();readState.close();searchStore.close();});

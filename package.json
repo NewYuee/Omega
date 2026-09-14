@@ -24,7 +24,8 @@
     "desktop:package": "npm run desktop:build && electron-builder",
     "mobile:bundle": "node native/build.mjs",
     "mobile:android:init": "node native/tauri.mjs android init",
-    "mobile:android:build": "node native/tauri.mjs android build --apk"
+    "mobile:android:build": "node native/tauri.mjs android build --apk",
+    "mobile:android:build:local-release": "node scripts/build-android-local-release.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

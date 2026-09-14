@@ -32,5 +32,5 @@ interface Window {
   omegaDialogs?: {open(name:string,props:any):Promise<any>};
   omegaReactApprovals?: {render(requests:any[],actions:{resolve(id:string|number,result:unknown):Promise<void>;report(message:string):void}):void};
   omegaReactComposer?: {render(model:any,actions:any):void;collapse():boolean};
-  omegaReactGroupComposer?: {render(model:any,actions:any):void;focus():void;collapse():boolean};
+  omegaReactGroupComposer?: {render(model:any,actions:any):void;focus():void;refill(value:{text:string;pastedTexts?:any[]}):void;collapse():boolean};
 }

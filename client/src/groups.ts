@@ -1,27 +1,31 @@
 import { createGroupRoom } from './group-room.js';
+import type {PastedTextTransport} from './pasted-content.js';
+import type {RichPastePayload} from './RichPasteEditor.js';
 
 const statusLabels={idle:'空闲',planning:'正在分配',plan_drafting:'正在分配',awaiting_confirmation:'等待回复',running:'回复中',finalizing:'正在整理回复',awaiting_acceptance:'已回复',paused:'需要处理',accepted:'已回复',cancelled:'已取消',draft:'准备中',queued:'排队中',reviewing:'回复中',completed:'已回复',failed:'失败',unknown:'待核对'};
 type Mode='chats'|'groups';
-interface GroupOptions{api(route:string,data?:any):Promise<any>;rpc(method:string,params?:Record<string,unknown>,extra?:Record<string,unknown>):Promise<any>;error(message:string):void;closeDrawer():void;openThread(id:string):any;getWorkspace():string;onModeChange?(mode:Mode):void;openDialog(name:string,props:any):Promise<any>;markRead?(scope:string,id:string):Promise<any>}
+interface GroupOptions{api(route:string,data?:any):Promise<any>;rpc(method:string,params?:Record<string,unknown>,extra?:Record<string,unknown>):Promise<any>;pastedText:PastedTextTransport;error(message:string):void;closeDrawer():void;openThread(id:string):any;getWorkspace():string;onModeChange?(mode:Mode):void;openDialog(name:string,props:any):Promise<any>;markRead?(scope:string,id:string):Promise<any>}
 const label=(value?:string)=>(statusLabels as Record<string,string>)[value||'']||value||'未知';
 const errorMessage=(error:unknown)=>error instanceof Error?error.message:String(error);
 
-export function initGroups({api,rpc,error,closeDrawer,openThread,getWorkspace,onModeChange,openDialog,markRead}:GroupOptions){
+export function initGroups({api,rpc,pastedText,error,closeDrawer,openThread,getWorkspace,onModeChange,openDialog,markRead}:GroupOptions){
   let mode:Mode='chats',groupId=sessionStorage.getItem('omega-group')||null,requirementId=sessionStorage.getItem('omega-requirement')||null,current:any=null,loading=false,acting=false;
   let listedGroups:any[]=[];
   const unreadGroups=new Set<string>();
   const unreadGroupCounts=new Map<string,number>();
   const withUnread=(group:any)=>({...group,unread:unreadGroups.has(group.id),unreadCount:unreadGroupCounts.get(group.id)||0});
   let replyTo:any=null,sending=false,refreshTimer:ReturnType<typeof setTimeout>|null=null,refreshAgain=false;
-  const room=createGroupRoom({api,act,openThread,error,onSelect:(id:string)=>{requirementId=id;},onReply:(target:any)=>{replyTo=target;renderGroupComposer();window.omegaReactGroupComposer?.focus();}});
-  function renderGroupComposer(){window.omegaReactGroupComposer?.render({members:current?.members||[],sending,enabled:!!groupId&&!!current?.members?.length,replyTo},{submit:sendGroupMessage,cancelReply:()=>{replyTo=null;renderGroupComposer();},report:(message:string)=>error(message)});}
-  async function sendGroupMessage(content:string){
-    if(sending||!groupId||!content.trim())return false;
+  const room=createGroupRoom({api,act,openThread,error,onSelect:(id:string)=>{requirementId=id;},onReply:(target:any)=>{replyTo=target;renderGroupComposer();window.omegaReactGroupComposer?.focus();},onDecision:openDecision,onCancel:cancelRequirement});
+  function renderGroupComposer(){window.omegaReactGroupComposer?.render({members:current?.members||[],sending,enabled:!!groupId&&!!current?.members?.length,replyTo},{submit:sendGroupMessage,cancelReply:()=>{replyTo=null;renderGroupComposer();},report:(message:string)=>error(message),...pastedText});}
+  async function sendGroupMessage(message:RichPastePayload){
+    const content=message.text;if(sending||!groupId||!content.trim())return false;
     const targetGroup=groupId,targetReply=replyTo;sending=true;error('');renderGroupComposer();
-    try{const result=await api('groups',{action:'submit',groupId:targetGroup,content:content.trim(),replyTaskId:targetReply?.taskId});if(groupId===targetGroup){current=result.group;if(replyTo===targetReply)replyTo=null;render();return true;}return false;}
+    try{const result=await api('groups',{action:'submit',groupId:targetGroup,content:content.trim(),pasteIds:message.pasteIds,replyTaskId:targetReply?.taskId});if(groupId===targetGroup){current=result.group;if(replyTo===targetReply)replyTo=null;render();return true;}return false;}
     catch(cause){error(`发送失败：${errorMessage(cause)}`);return false;}
     finally{sending=false;renderGroupComposer();}
   }
+  async function openDecision(target:any){if(!target?.decision||acting)return;await openDialog('decision',{memberName:target.memberName,decision:target.decision,onSubmit:async(values:Record<string,unknown>)=>{const ok=await act({action:'resolveDecision',taskId:target.taskId,requirementId:target.requirementId,...values},'提交决定');if(!ok)throw Error('决定没有提交，请重试')}});}
+  async function cancelRequirement(target:any){if(acting||!groupId||!target?.id)return;acting=true;error('');renderGroupHeader();try{const response=await api('groups',{action:'cancel',groupId,requirementId:target.id});current=response.group;requirementId=target.id;sessionStorage.setItem('omega-requirement',target.id);render();await list();window.omegaReactGroupComposer?.refill({text:target.content,pastedTexts:target.pastedTexts||[]});}catch(cause){error(`取消发送失败：${errorMessage(cause)}`);}finally{acting=false;renderGroupHeader();}}
   window.addEventListener('omega:react-group-composer-ready',renderGroupComposer);
   function renderGroupHeader(group:any=current){const layout=window.omegaReactGroupPanels?.getLayout()||{mobile:false,membersOpen:true,questionsOpen:true};window.omegaAppState?.patch({groupTitle:group?.name||'创建你的第一个协作群组',groupHeader:group?{status:group.status,statusLabel:label(group.status),description:group.description||'群组会话',availability:group.runningTasks?`${group.runningTasks} 位成员正在回复`:`${group.members.length} 位成员可用`,maxConcurrency:group.limits.maxConcurrency,...layout,disabled:acting,actions:{toggleMembers:()=>window.omegaReactGroupPanels?.toggle('members'),toggleQuestions:()=>window.omegaReactGroupPanels?.toggle('tasks'),setConcurrency:(value:number)=>act({action:'setConcurrency',maxConcurrency:value,requirementId},'调整并发数'),addMember:openMember,deleteGroup:deleteCurrentGroup}}:null});}
 

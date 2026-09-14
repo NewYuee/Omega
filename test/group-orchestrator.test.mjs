@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GroupStore } from '../groups-store.mjs';
-import { GroupOrchestrator, parseCoordinatorPlan, parseTaskReview, memberTaskPrompt } from '../group-orchestrator.mjs';
+import { GroupOrchestrator, compactTaskObjective, parseCoordinatorPlan, parseTaskReview, parseMemberDecision, stripMemberDecision, memberTaskPrompt } from '../group-orchestrator.mjs';
 
 test('member handoff keeps task limits and rework feedback without replaying identity or unrelated work',()=>{
   const member={id:'a',cwd:'/projects/a',role:'身份背景',responsibilities:'全部历史职责',operations:'禁止发布'};
@@ -17,6 +17,55 @@ test('coordinator plan parser accepts tagged strict JSON',()=>{
   assert.equal(parsed.tasks[0].memberId,'m');
   assert.throws(()=>parseCoordinatorPlan('只有普通文字'),/可识别/);
   assert.equal(parseTaskReview('<omega-review>{"decision":"pass","summary":"证据充分"}</omega-review>').decision,'pass');
+});
+
+test('member decisions are structured and resume the same member task after the user answers',async()=>{
+  const decisionText='需要你选择实现方式。\n<omega-decision>{"title":"选择音色方案","question":"采用哪一种音色保存方式？","options":[{"id":"preview","label":"生成预览音频","description":"接入更简单","recommended":true},{"id":"voice-id","label":"保存上游音色 ID","description":"能力更完整"}],"allowOther":true}</omega-decision>';
+  const parsed=parseMemberDecision(decisionText);assert.equal(parsed.options[0].recommended,true);assert.equal(stripMemberDecision(decisionText),'需要你选择实现方式。');
+  const store=new GroupStore(':memory:');let group=store.createGroup({name:'决策组'},'coord','/workspace');group=store.addMember(group.id,{threadId:'owner',name:'负责人',role:'开发',cwd:'/project'});const requirement=store.createRequirement(group.id,{content:'实现音色功能'}).requirement;store.setPlan(requirement.id,'执行',[{memberId:group.members[0].id,title:'实现音色',objective:'实现功能'}],null,'');store.confirmPlan(group.id,requirement.id);const task=store.getRequirement(requirement.id).tasks[0];store.startTask(task.id,'first',null);store.recordTaskDecision(task.id,'需要你选择实现方式。','turn-1',parsed);
+  let waiting=store.getRequirement(requirement.id);assert.equal(waiting.status,'running');assert.equal(waiting.tasks[0].status,'awaiting_input');assert.equal(waiting.tasks[0].decision.status,'pending');
+  store.resolveDecision(group.id,task.id,{choiceId:'preview',note:'先做最小方案'});const resumed=store.getRequirement(requirement.id);assert.equal(resumed.tasks[0].status,'queued');assert.equal(resumed.tasks[0].decision.answer.label,'生成预览音频');assert.match(memberTaskPrompt(group,resumed,group.members[0],resumed.tasks[0]),/用户已经作出决定：生成预览音频/);assert.match(memberTaskPrompt(group,resumed,group.members[0],resumed.tasks[0]),/先做最小方案/);store.close();
+});
+
+test('cancelling a dispatched task keeps the requirement cancelled when its interrupted turn settles',async()=>{
+  const store=new GroupStore(':memory:');let group=store.createGroup({name:'取消组',limits:{taskTimeoutMinutes:5}},'coord','/workspace');group=store.addMember(group.id,{threadId:'member',name:'成员',role:'开发',cwd:'/project'});const requirement=store.createRequirement(group.id,{content:'错误的消息'}).requirement;store.setPlan(requirement.id,'执行',[{memberId:group.members[0].id,title:'执行',objective:'修改代码'}],null,'');store.confirmPlan(group.id,requirement.id);const task=store.getRequirement(requirement.id).tasks[0];let release;const orchestrator=new GroupOrchestrator({store,isThreadActive:()=>false,notify:()=>{},startTurn:async()=>({turn:{id:'turn-cancel'}}),waitTurn:async()=>new Promise(resolve=>{release=resolve}),readTurnText:async()=>'',interruptTurn:async()=>{}});orchestrator.suspend(group.id);const running=orchestrator.dispatchTask(group.id,store.runnableTasks(group.id)[0]);for(let i=0;i<30&&!release;i++)await new Promise(resolve=>setTimeout(resolve,2));assert.equal(typeof release,'function');store.cancel(group.id,requirement.id);release({status:'interrupted'});await running;assert.equal(store.getRequirement(requirement.id).status,'cancelled');assert.equal(store.getTask(task.id).status,'cancelled');store.close();
+});
+
+test('long group references stay complete while task objectives remain bounded',()=>{
+  const long=`实现音色生成功能\n${'接口参考资料。'.repeat(900)}\n考虑 DC-Media 协议兼容方式`;
+  const objective=compactTaskObjective(long);
+  assert.ok(objective.length<=5000);
+  assert.match(objective,/实现音色生成功能/);
+  assert.match(objective,/DC-Media 协议兼容方式/);
+  const prompt=memberTaskPrompt({}, {content:long,tasks:[]}, {cwd:'/project'}, {objective:'设计音色模型接入方案',access_mode:'read',dependencies_json:'[]',attempt:0});
+  assert.match(prompt,/设计音色模型接入方案/);
+  assert.match(prompt,/用户原始长资料/);
+  assert.match(prompt,/DC-Media 协议兼容方式/);
+});
+
+test('pasted text files are resolved only when a member task is dispatched',()=>{
+  const body='完整接口说明'.repeat(400),prompt=memberTaskPrompt({}, {content:'参考 [Pasted Content 2400 chars]',pastedTexts:[{chars:[...body].length}],tasks:[]}, {cwd:'/project'}, {objective:'完成接口开发',access_mode:'read',dependencies_json:'[]',attempt:0},[body]);
+  assert.match(prompt,/Pasted Content 2400 chars\.txt/);
+  assert.match(prompt,/完整接口说明完整接口说明/);
+});
+
+test('a single task uses the coordinator objective instead of an oversized requirement',async()=>{
+  const store=new GroupStore(':memory:');
+  let group=store.createGroup({name:'长文档组',cwd:'/workspace',limits:{maxTasks:5,maxReworks:1,maxRounds:6,taskTimeoutMinutes:5}},'coord','/workspace');
+  group=store.addMember(group.id,{threadId:'owner-thread',name:'负责人',role:'开发'});const member=group.members[0];
+  const long=`增加音色生成能力\n${'声音设计接口资料。'.repeat(800)}\n兼容 DC-Media 协议`;
+  const {requirement}=store.createRequirement(group.id,{content:long});
+  let sequence=0;const texts=new Map(),calls=[];
+  const orchestrator=new GroupOrchestrator({store,isThreadActive:()=>false,notify:()=>{},
+    startTurn:async(threadId,prompt)=>{const turnId=`long-${++sequence}`;calls.push({threadId,prompt});texts.set(turnId,prompt.includes('任务计划')?`<omega-plan>{"summary":"交给负责人评估","tasks":[{"memberId":"${member.id}","title":"设计音色接入","objective":"设计音色生成能力并评估 DC-Media 协议兼容方案","accessMode":"read","dependsOn":[]}]}</omega-plan>`:'已给出接入方案');return{turn:{id:turnId}};},
+    waitTurn:async()=>({status:'completed'}),readTurnText:async(_threadId,turnId)=>texts.get(turnId)||''});
+  await orchestrator.run(group.id,requirement.id);
+  const finished=store.getRequirement(requirement.id),memberCall=calls.find(call=>call.threadId==='owner-thread');
+  assert.equal(finished.status,'completed');
+  assert.equal(finished.tasks[0].objective,'设计音色生成能力并评估 DC-Media 协议兼容方案');
+  assert.ok(memberCall.prompt.includes('用户原始长资料'));
+  assert.ok(memberCall.prompt.includes('兼容 DC-Media 协议'));
+  store.close();
 });
 
 test('orchestrator runs confirmed tasks in existing sessions and produces delivery',async()=>{
@@ -38,8 +87,9 @@ test('orchestrator runs confirmed tasks in existing sessions and produces delive
   assert.equal(done.requirement.tasks[0].status,'completed');
   assert.equal(done.requirement.delivery,done.requirement.tasks[0].result);
   assert.deepEqual(calls.map(call=>call.threadId),['coord','dev-thread']);
-  assert.ok(calls[1].prompt.startsWith('增加功能'));
-  assert.doesNotMatch(calls[1].prompt,/修改代码并验证|自动测试通过/);
+  assert.ok(calls[1].prompt.startsWith('修改代码并验证'));
+  assert.match(calls[1].prompt,/测试通过/);
+  assert.doesNotMatch(calls[1].prompt,/自动测试通过/);
   assert.doesNotMatch(calls[1].prompt,/你正在作为|当前需求：|职责：/);
   store.close();
 });

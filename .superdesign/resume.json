@@ -11,59 +11,51 @@
         ".superdesign/design-system.md",
         "public/index.html",
         "public/style.css",
-        "client/src/AppController.ts",
-        "public/markdown.js",
-        "client/src/transport.ts",
-        "client/src/platform.ts",
-        "client/src/attachments.ts",
-        "client/src/ui.ts",
-        "client/src/model-settings.ts",
         "client/src/groups.ts",
         "client/src/group-room.ts",
         "client/src/AppState.ts",
-        "client/src/SessionRuntime.ts",
         "client/src/main.tsx",
         "client/src/ConversationHeader.tsx",
         "client/src/WorkspaceSidebar.tsx",
         "client/src/GroupPanels.tsx",
+        "client/src/GroupTimeline.tsx",
         "client/src/Notice.tsx",
         "client/src/FormLayer.tsx",
+        "client/src/ApprovalPanel.tsx",
         "client/src/ChatTimeline.tsx",
-        "client/src/product.css"
+        "client/src/product.css",
+        "client/src/GroupComposer.tsx",
+        "client/src/RichPasteEditor.tsx"
       ],
       "fingerprints": {
         ".superdesign/design-system.md": "a586c3d99d7b41f90dbd57ab1eb12307a0c2e536ecff84d82dc753ced6828f94",
         "public/index.html": "c2434d955bdc3d277fb1fe6b32a14de8583346d91e3d6b9d2150bd2bac92705d",
         "public/style.css": "9b99cc4b4ebc5e9183499498c6f7e52648ba8cd3b335692401926c298bf05500",
-        "client/src/AppController.ts": "e024911c465ee4d06059f7abbb5f59aef1c7126fd68cfc1cbd87a9a0ccae6311",
-        "public/markdown.js": "04591d1925efe76583c26807e8cc809926a5423c9aae0127c540a9cc66a1ee7b",
-        "client/src/transport.ts": "cbdc91a2a3008805f98ca53e9d2dec1d1e644805977774acbd739d0c4d6ad7f6",
-        "client/src/platform.ts": "570412ab2b1e6e78263b082989ec81127627434b6c945280d568b7e995efbfe1",
-        "client/src/attachments.ts": "64ccf4e6e5e56e2307dbf6a0b7e209db90b372662f744e9042832f8f3ca54437",
-        "client/src/ui.ts": "66d3a8af9c474059ebdd8f6277be4eea45aa43d420f5658fdbdda9430c335ba8",
-        "client/src/model-settings.ts": "a7da0c479dfa5655c386f0037ed308d13f5b1501da58103228bd52b4ecec01c7",
-        "client/src/groups.ts": "7b451ca3c61d834403759a0981d4a47587ba3db127344696784b5935986c4399",
+        "client/src/groups.ts": "5c548897811561d279288c3bbd85e43b54da10e84d2754b07941cc54f632ef10",
         "client/src/group-room.ts": "fcada3c14ea1904088df59cf7c40cac469d00cda6b5126fe4439ee31dec331e4",
         "client/src/AppState.ts": "16d477f791a8b8d2d43bbf045e3a0de93052a38c3db6b7c94d4e834de0b4224f",
-        "client/src/SessionRuntime.ts": "337c9bea63526ef4d1298f441bbc459b919d5aef0bd565ea353d857ed6f706f9",
         "client/src/main.tsx": "774a48961d4632d8f252007d4eae0533798aab883b6b803998c8c2e30e0974f7",
         "client/src/ConversationHeader.tsx": "fd3b614ae5902ab1ea5ac75f513c4f1889932b7d1cb744ce9841e5a7dc44992a",
         "client/src/WorkspaceSidebar.tsx": "e45404b1df271a74d0c599e46db48b2e54e636af3ec9020889208549f8433626",
         "client/src/GroupPanels.tsx": "dc47217269c42055a298e69ef78cf95ad9bf311e48077e375e25a87af539b48f",
+        "client/src/GroupTimeline.tsx": "3166312d8c037ac1414bc56ee0cc443435a3998014a122f4a7d7b4c6e7fceaa4",
         "client/src/Notice.tsx": "41d4feca05f1e58c90eed0ad698b258ef4717932f9f84b83be5732af3e8acebc",
         "client/src/FormLayer.tsx": "b9ccca885b00f46b9e3ab74f3a52139b32189e853d8c68895af5470c51be69f8",
+        "client/src/ApprovalPanel.tsx": "f281bc9b6e3e4373e97da872fdc9cdfef4b25ba769633c97d86e01c74fcb714a",
         "client/src/ChatTimeline.tsx": "5ed958b5f39804e4ef2ed4c5a145e966bc54a6257b53bcf8b86921d51bf6fb52",
-        "client/src/product.css": "522989b755e46ed0df33b6859a593b2c93426349a892bc93cf955fd80d7a8ed2"
+        "client/src/product.css": "53080b8f0b839534e54a1ea60e3c46bdaf07c2ea201822b6bb958c1bdf2f31b6",
+        "client/src/GroupComposer.tsx": "b9be2b7ed0d4daa734d657666af61688b1d670cfc6a60b84fd41f7c476362ab7",
+        "client/src/RichPasteEditor.tsx": "c527f773806d18f13088187428134e54cdf97e49b6c67251d825b044548d98e7"
       },
       "components": [],
       "drafts": {
         "7f0dd82d-6b19-428d-907e-7e70b1d80666": {
           "title": "Omega · 工作持续发生 (Mobile Responsive Chat UI)",
           "visualDirection": "Compact mobile header, conversation drawer with rename/delete, one-line growing composer and immersive editor; preserves desktop sidebar and chat bubbles; compact model settings dialog with model-specific reasoning effort; native server connection dialog uses existing typography and controls, explicit HTTP warning and secure device storage",
-          "currentVersion": 6
+          "currentVersion": 11
         }
       },
-      "updatedAt": "2026-09-14T08:05:00.000Z"
+      "updatedAt": "2026-09-14T09:22:45.000Z"
     }
   }
 }
