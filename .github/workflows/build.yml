@@ -101,7 +101,7 @@ jobs:
           node-version: 22.18.0
           cache: npm
       - run: npm ci
-      - run: npm run desktop:package -- ${{ matrix.args }}
+      - run: npm run desktop:package -- ${{ matrix.args }} --publish never
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
