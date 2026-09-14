@@ -23,30 +23,36 @@ export function initGroups({api,rpc,error,closeDrawer,openThread,getWorkspace,on
     finally{sending=false;renderGroupComposer();}
   }
   window.addEventListener('omega:react-group-composer-ready',renderGroupComposer);
-  const queue=document.createElement('div');queue.className='requirement-queue';
-  const groupView=$('group-view'),memberPanelToggle=button('',()=>setPanelCollapsed('members',!groupView.classList.contains('members-collapsed')),'panel-toggle member-panel-toggle'),taskPanelToggle=button('',()=>setPanelCollapsed('tasks',!groupView.classList.contains('tasks-collapsed')),'panel-toggle task-panel-toggle');
-  const queueLabel=text('label','需求队列');const queueSelect=document.createElement('select');queueSelect.id='requirement-select';queueLabel.append(queueSelect);
-  const queueMeta=text('span','','queue-meta'),queueControls=document.createElement('div');queueControls.className='queue-controls';
-  const concurrencyLabel=text('label','并发');concurrencyLabel.className='concurrency-control';const concurrencySelect=document.createElement('select');concurrencySelect.id='group-concurrency';concurrencySelect.setAttribute('aria-label','群组同时执行任务数');
-  for(let value=1;value<=10;value++){const option=document.createElement('option');option.value=String(value);option.textContent=String(value);concurrencySelect.append(option);}concurrencyLabel.append(concurrencySelect);queueControls.append(queueMeta,concurrencyLabel);queue.append(memberPanelToggle,queueLabel,queueControls,taskPanelToggle);document.querySelector('.group-center')?.prepend(queue);
+  const groupView=$('group-view'),groupHeader=document.querySelector('main>header'),headerTitle=groupHeader?.querySelector('.header-title');
+  const groupHeaderMeta=text('div','','group-header-meta');groupHeaderMeta.id='group-header-meta';groupHeaderMeta.hidden=true;groupHeaderMeta.append($('group-state'),$('group-description'),$('group-cwd'));headerTitle?.append(groupHeaderMeta);
+  const groupMore=document.createElement('details');groupMore.id='group-more';groupMore.hidden=true;const groupMoreSummary=text('summary','更多');groupMoreSummary.setAttribute('aria-label','群组更多操作');
+  const groupMoreMenu=text('div','','group-more-menu');groupMore.append(groupMoreSummary,groupMoreMenu);groupHeader?.insertBefore(groupMore,$('mobile-new'));
+  const closeGroupMore=()=>{groupMore.open=false;};
+  const memberPanelToggle=button('',()=>{setPanelCollapsed('members',!groupView.classList.contains('members-collapsed'));closeGroupMore();},'panel-toggle member-panel-toggle'),taskPanelToggle=button('',()=>{setPanelCollapsed('tasks',!groupView.classList.contains('tasks-collapsed'));closeGroupMore();},'panel-toggle task-panel-toggle');
+  const concurrencyLabel=text('label','同时执行任务数','concurrency-control');const concurrencySelect=document.createElement('select');concurrencySelect.id='group-concurrency';concurrencySelect.setAttribute('aria-label','群组同时执行任务数');
+  for(let value=1;value<=10;value++){const option=document.createElement('option');option.value=String(value);option.textContent=String(value);concurrencySelect.append(option);}concurrencyLabel.append(concurrencySelect);
   const narrowPanels=matchMedia('(max-width:800px)');
   function closeMobilePanels(){delete groupView.dataset.mobilePanel;for(const toggle of [memberPanelToggle,taskPanelToggle])toggle.setAttribute('aria-expanded','false');}
   function setPanelCollapsed(side,collapsed){
     if(narrowPanels.matches){const opening=groupView.dataset.mobilePanel!==side;closeMobilePanels();if(opening){groupView.dataset.mobilePanel=side;(side==='members'?memberPanelToggle:taskPanelToggle).setAttribute('aria-expanded','true');}return;}
-    const isMembers=side==='members',className=isMembers?'members-collapsed':'tasks-collapsed',toggle=isMembers?memberPanelToggle:taskPanelToggle,label=isMembers?'成员栏':'问题定位栏';groupView.classList.toggle(className,collapsed);toggle.replaceChildren(text('span',label,'toggle-label'),text('span',isMembers?(collapsed?'›':'‹'):(collapsed?'‹':'›'),'toggle-glyph'));toggle.title=`${collapsed?'展开':'折叠'}${label}`;toggle.setAttribute('aria-label',toggle.title);toggle.setAttribute('aria-expanded',String(!collapsed));localStorage.setItem(`omega-group-${side}-collapsed`,collapsed?'1':'0');}
+    const isMembers=side==='members',className=isMembers?'members-collapsed':'tasks-collapsed',toggle=isMembers?memberPanelToggle:taskPanelToggle,label=isMembers?'成员栏':'问题定位栏';groupView.classList.toggle(className,collapsed);toggle.textContent=label;toggle.title=`${collapsed?'展开':'折叠'}${label}`;toggle.setAttribute('aria-label',toggle.title);toggle.setAttribute('aria-expanded',String(!collapsed));localStorage.setItem(`omega-group-${side}-collapsed`,collapsed?'1':'0');}
   setPanelCollapsed('members',localStorage.getItem('omega-group-members-collapsed')==='1');setPanelCollapsed('tasks',localStorage.getItem('omega-group-tasks-collapsed')==='1');
-  function syncPanelMode(){closeMobilePanels();if(narrowPanels.matches){memberPanelToggle.textContent='成员';taskPanelToggle.textContent='问题';memberPanelToggle.setAttribute('aria-label','展开成员栏');taskPanelToggle.setAttribute('aria-label','展开问题定位栏');}else{setPanelCollapsed('members',localStorage.getItem('omega-group-members-collapsed')==='1');setPanelCollapsed('tasks',localStorage.getItem('omega-group-tasks-collapsed')==='1');}}
+  function syncPanelMode(){closeMobilePanels();if(narrowPanels.matches){memberPanelToggle.textContent='打开成员栏';taskPanelToggle.textContent='打开问题定位栏';memberPanelToggle.setAttribute('aria-label','打开成员栏');taskPanelToggle.setAttribute('aria-label','打开问题定位栏');}else{setPanelCollapsed('members',localStorage.getItem('omega-group-members-collapsed')==='1');setPanelCollapsed('tasks',localStorage.getItem('omega-group-tasks-collapsed')==='1');}}
   for(const panel of groupView.querySelectorAll('.group-panel'))panel.querySelector('.panel-title').append(button('关闭',closeMobilePanels,'mobile-panel-close'));
   const panelBackdrop=button('',closeMobilePanels,'group-panel-backdrop');panelBackdrop.setAttribute('aria-label','关闭侧栏');groupView.querySelector('.group-center').before(panelBackdrop);
   groupView.addEventListener('click',event=>{if(narrowPanels.matches&&event.target.closest('.question-link'))closeMobilePanels();});
   groupView.addEventListener('keydown',event=>{if(event.key==='Escape'&&groupView.dataset.mobilePanel){closeMobilePanels();event.stopPropagation();}});
   narrowPanels.addEventListener('change',syncPanelMode);syncPanelMode();
   document.querySelector('.task-panel .panel-title h2').textContent='问题定位';
-  const addMemberButton=$('add-member'),groupTools=document.createElement('div');groupTools.className='group-tools';
-  const deleteGroupButton=button('删除群组',deleteCurrentGroup,'group-delete');groupTools.append(addMemberButton,deleteGroupButton);document.querySelector('.group-top')?.append(groupTools);
+  const addMemberButton=$('add-member');addMemberButton.classList.add('group-menu-action');
+  const deleteGroupButton=button('删除群组',()=>{closeGroupMore();deleteCurrentGroup();},'group-delete group-menu-action');
+  groupMoreMenu.append(memberPanelToggle,taskPanelToggle,concurrencyLabel,addMemberButton,deleteGroupButton);
+  document.addEventListener('click',event=>{if(groupMore.open&&!groupMore.contains(event.target))closeGroupMore();});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&groupMore.open){closeGroupMore();groupMoreSummary.focus();}});
 
   function switchMode(next){
     mode=next;document.body.classList.toggle('group-mode',next==='groups');
+    groupHeaderMeta.hidden=next!=='groups';groupMore.hidden=next!=='groups'||!current;if(next!=='groups')closeGroupMore();
     globalThis.omegaAppState?.patch({mode:next});
     $('show-chats').classList.toggle('selected',next==='chats');$('show-groups').classList.toggle('selected',next==='groups');
     $('threads').hidden=next!=='chats';$('groups').hidden=next!=='groups';$('new').hidden=next!=='chats';$('new-group').hidden=next!=='groups';
@@ -87,13 +93,13 @@ export function initGroups({api,rpc,error,closeDrawer,openThread,getWorkspace,on
 
   function renderEmpty(){
     $('title').textContent='创建你的第一个协作群组';$('group-state').textContent='尚无群组';$('group-description').textContent='把已有会话组织成设计、开发、测试等角色。';
-    $('group-cwd').textContent='';queue.hidden=true;globalThis.omegaReactGroupPanels?.renderMembers({members:[],busy:new Set(),removable:false},{edit:()=>{},open:()=>{},remove:()=>{}});room.clear();
+    $('group-cwd').textContent='';groupMore.hidden=true;closeGroupMore();globalThis.omegaReactGroupPanels?.renderMembers({members:[],busy:new Set(),removable:false},{edit:()=>{},open:()=>{},remove:()=>{}});room.clear();
     $('group-actions').replaceChildren();$('requirement-form').hidden=true;$('add-member').disabled=true;deleteGroupButton.disabled=true;renderGroupComposer();
   }
 
   function render(){
     const group=current,req=group.requirement;$('title').textContent=group.name;$('group-state').textContent=label(group.status);$('group-state').dataset.status=group.status;
-    $('group-description').textContent=group.description||'群组会话';$('group-cwd').textContent=group.runningTasks?`${group.runningTasks} 位成员正在回复`:`${group.members.length} 位成员可用`;$('member-count').textContent=`${group.members.length} 位`;$('add-member').disabled=false;deleteGroupButton.disabled=false;renderQueue(group);
+    $('group-description').textContent=group.description||'群组会话';$('group-cwd').textContent=group.runningTasks?`${group.runningTasks} 位成员正在回复`:`${group.members.length} 位成员可用`;$('member-count').textContent=`${group.members.length} 位`;$('add-member').disabled=false;deleteGroupButton.disabled=false;groupMore.hidden=false;renderGroupControls(group);
     const busy=new Set(group.requirements?.flatMap(r=>r.tasks||[]).filter(t=>t.status==='running').map(t=>t.memberId));globalThis.omegaReactGroupPanels?.renderMembers({members:group.members,busy,removable:!req||['completed','accepted','cancelled'].includes(req.status)},{edit:openMemberEdit,open:openThread,remove:memberId=>act({action:'removeMember',memberId},'移出成员')});
     $('group-summary').textContent=req?.plan?.summary||group.summary||'协调者会持续整理目标、约束和进度。';
     room.render(group);$('group-actions').replaceChildren();$('requirement-form').hidden=false;renderGroupComposer();
@@ -102,7 +108,7 @@ export function initGroups({api,rpc,error,closeDrawer,openThread,getWorkspace,on
   window.addEventListener('omega:react-workspace-ready',()=>{if(listedGroups.length)globalThis.omegaReactWorkspace?.renderGroups(listedGroups.map(withUnread),groupId,{open:select,status:label});});
   window.addEventListener('omega:react-group-panels-ready',()=>{if(current){render();room.render(current);}});
 
-  function renderQueue(group){queue.hidden=false;queueLabel.hidden=true;queueMeta.textContent='';concurrencySelect.value=String(group.limits.maxConcurrency);concurrencySelect.onchange=()=>act({action:'setConcurrency',maxConcurrency:Number(concurrencySelect.value),requirementId},'调整并发数');}
+  function renderGroupControls(group){concurrencySelect.value=String(group.limits.maxConcurrency);concurrencySelect.onchange=()=>act({action:'setConcurrency',maxConcurrency:Number(concurrencySelect.value),requirementId},'调整并发数');}
 
   async function act(input,labelText){
     if(acting||!groupId)return;acting=true;error('');
@@ -132,6 +138,6 @@ export function initGroups({api,rpc,error,closeDrawer,openThread,getWorkspace,on
 
   $('show-chats').onclick=()=>switchMode('chats');$('show-groups').onclick=()=>switchMode('groups');
   $('new-group').onclick=()=>reactForm({id:'create-group-dialog',title:'新建群组',description:'群组可以添加不同项目、不同工作目录中的会话。',fields:[{name:'name',id:'group-name',label:'群组名称',required:true,maxLength:80},{name:'description',id:'group-project',label:'项目说明',type:'textarea',maxLength:4000},{name:'cwd',id:'group-workdir',label:'服务器工作目录',value:getWorkspace(),required:true},{name:'constraints',id:'group-constraints',label:'项目约束',type:'textarea',maxLength:8000}],submitLabel:'创建群组',onSubmit:async values=>{const response=await api('groups',{action:'create',...values});current=response.group;groupId=current.id;sessionStorage.setItem('omega-group',groupId);render();await list();}}).catch(e=>error(e.message));
-  $('add-member').onclick=openMember;
+  $('add-member').onclick=()=>{closeGroupMore();openMember();};
   return {switchMode,refresh,applyReadState:state=>{unreadGroups.clear();unreadGroupCounts.clear();for(const id of state?.unread?.groups||[]){unreadGroups.add(id);unreadGroupCounts.set(id,state?.counts?.groups?.[id]||1);}if(listedGroups.length)globalThis.omegaReactWorkspace?.renderGroups(listedGroups.map(withUnread),groupId,{open:select,status:label});},onReadState:p=>{if(p.scope==='group'){unreadGroups.delete(p.id);unreadGroupCounts.delete(p.id);if(listedGroups.length)globalThis.omegaReactWorkspace?.renderGroups(listedGroups.map(withUnread),groupId,{open:select,status:label});}},onUnread:p=>{if(p.scope==='group'){unreadGroups.add(p.id);unreadGroupCounts.set(p.id,p.count||1);if(listedGroups.length)globalThis.omegaReactWorkspace?.renderGroups(listedGroups.map(withUnread),groupId,{open:select,status:label});}},onGroupUpdated:id=>{if(mode==='groups'&&(!groupId||id===groupId)&&!refreshTimer)refreshTimer=setTimeout(()=>{refreshTimer=null;refresh().catch(e=>error(e.message));},200);},onGroupDeleted:id=>{unreadGroups.delete(id);unreadGroupCounts.delete(id);if(id===groupId){groupId=null;requirementId=null;current=null;sessionStorage.removeItem('omega-group');sessionStorage.removeItem('omega-requirement');}if(mode==='groups')setTimeout(()=>refresh().catch(e=>error(e.message)),loading?120:0);},isGroupMode:()=>mode==='groups',newAction:()=>mode==='groups'?$('new-group').click():$('new').click()};
 }

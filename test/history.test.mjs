@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {historyPage,paginatedHistoryPage,PAGE_SIZE,TURN_PAGE_SIZE,ITEM_PAGE_SIZE} from '../history.mjs';
+import {historyPage,paginatedHistoryPage,PAGE_SIZE,TURN_PAGE_SIZE,ITEM_PAGE_SIZE,COMPAT_TURN_PAGE_SIZE} from '../history.mjs';
 test('large history returns outline and only selected text page; tool bodies deferred', () => {
   const thread={id:'demo',turns:Array.from({length:1000},(_,i)=>({id:'t'+i,items:[
     {id:'u'+i,type:'userMessage',content:[{text:'Question '+i}]},
@@ -56,4 +56,30 @@ test('turn selection skips outline hydration and older outline skips item hydrat
   const older=await paginatedHistoryPage(rpc,{id:'thread'},{cursor:'opaque',outlineOnly:true});
   assert.equal(older.turn,null);assert.equal(older.outline[0].id,'old');
   assert.deepEqual(calls.map(call=>call.method),['thread/turns/list']);
+});
+
+test('unsupported item pagination falls back to bounded full-turn windows',async()=>{
+  const calls=[],turn=index=>({id:'t'+index,status:'completed',items:[{id:'u'+index,type:'userMessage',content:[{text:'Question '+index}]},{id:'a'+index,type:'agentMessage',text:'Answer '+index}]});
+  const rpc={request:async(method,params)=>{calls.push({method,params});
+    if(method==='thread/items/list')throw new Error('thread/items/list is not supported yet');
+    if(method==='thread/turns/list'&&params.itemsView==='summary')return{data:Array.from({length:15},(_,index)=>turn(14-index)),nextCursor:'older'};
+    if(method==='thread/turns/list'&&params.itemsView==='full')return params.cursor==='older-two'
+      ?{data:Array.from({length:5},(_,index)=>turn(4-index)),nextCursor:null}
+      :{data:Array.from({length:10},(_,index)=>turn(14-index)),nextCursor:'older-two'};
+    throw Error('unexpected '+method);
+  }};
+  const latest=await paginatedHistoryPage(rpc,{id:'thread'});
+  assert.equal(latest.compatibilityMode,'turns');assert.equal(latest.outline.length,COMPAT_TURN_PAGE_SIZE);assert.equal(latest.turn.id,'t14');assert.equal(latest.turn.items[1].pageText,'Answer 14');
+  assert.ok(calls.some(call=>call.method==='thread/items/list'));
+  assert.ok(calls.filter(call=>call.params.itemsView==='full').every(call=>call.params.limit===COMPAT_TURN_PAGE_SIZE));
+  calls.length=0;
+  const old=await paginatedHistoryPage(rpc,{id:'thread'},{turnId:'t2',selectionOnly:true});
+  assert.equal(old.turn.id,'t2');assert.equal(old.turn.items[1].pageText,'Answer 2');assert.equal(old.outline,null);
+  assert.equal(calls.some(call=>call.method==='thread/items/list'),false,'capability result is cached for this App Server connection');
+  assert.deepEqual(calls.filter(call=>call.method==='thread/turns/list').map(call=>call.params.cursor),[null,'older-two']);
+});
+
+test('item pagination failures other than unsupported are not hidden',async()=>{
+  const rpc={request:async(method)=>{if(method==='thread/turns/list')return{data:[{id:'turn',items:[]}],nextCursor:null};throw new Error('permission denied')}};
+  await assert.rejects(()=>paginatedHistoryPage(rpc,{id:'thread'}),/permission denied/);
 });

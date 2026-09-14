@@ -158,7 +158,7 @@ async function list() {
 window.addEventListener('omega:react-workspace-ready',renderThreadSidebar);
 async function loadItem(item, offset) {
   const version = selectionVersion;
-  const result = await api('history',{threadId,turnId:selectedTurn,itemId:item.id,offset,selectionOnly:true});
+  const result = await api('history',{threadId,turnId:selectedTurn,itemId:item.id,offset,cursor:historyCursor||undefined,selectionOnly:true});
   if (version !== selectionVersion) return;
   for (const entry of result.turn?.items || []) items.set(entry.id,entry);
   render();
@@ -185,7 +185,7 @@ async function hydrate() {
   if (!selected || loading === version + 1) return;
   loading = version + 1;
   try {
-    const result = await api('history',{threadId:selected,turnId:historyMode ? selectedTurn : undefined,selectionOnly:historyMode||undefined});
+    const result = await api('history',{threadId:selected,turnId:historyMode ? selectedTurn : undefined,cursor:historyCursor||undefined,selectionOnly:historyMode||undefined});
     if (version !== selectionVersion || selected !== threadId) return;
     if(Array.isArray(result.outline)){outline=result.outline;historyCursor=null;olderHistoryCursor=result.nextCursor||null;newerHistoryCursors=[];}
     selectedTurn = result.turn?.id;

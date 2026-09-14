@@ -318,9 +318,67 @@ body.group-mode main>header .header-title{flex-direction:column;align-items:flex
 @media(max-width:800px){
   .group-columns{position:relative;overflow:hidden}
   .group-center{flex:1;min-height:0;height:100%;width:100%}
-  #group-view .group-panel{display:none;position:absolute;top:44px;bottom:0;left:0;width:min(340px,90%);height:auto;z-index:8;overflow-y:auto;overscroll-behavior:contain;padding:12px;background:#f7f9f8;box-shadow:4px 0 18px #173d2930}
+  #group-view .group-panel{display:none;position:absolute;top:0;bottom:0;left:0;width:min(340px,90%);height:auto;z-index:8;overflow-y:auto;overscroll-behavior:contain;padding:12px;background:#f7f9f8;box-shadow:4px 0 18px #173d2930}
   #group-view .task-panel{left:auto;right:0}
   #group-view[data-mobile-panel="members"] .group-panel:first-child,#group-view[data-mobile-panel="tasks"] .task-panel{display:flex}
   .mobile-panel-close{display:inline-flex;padding:6px 10px;min-height:32px;margin-left:auto}
-  #group-view[data-mobile-panel] .group-panel-backdrop{display:block;position:absolute;inset:44px 0 0;z-index:7;border:0;border-radius:0;background:#10201d55;width:100%;padding:0}
+  #group-view[data-mobile-panel] .group-panel-backdrop{display:block;position:absolute;inset:0;z-index:7;border:0;border-radius:0;background:#10201d55;width:100%;padding:0}
+}
+
+/* Group controls live in one compact title bar; secondary actions stay in the More menu. */
+.group-top,.requirement-queue{display:none!important}
+body.group-mode main>header{height:60px;min-height:60px;padding:7px 18px;overflow:visible}
+body.group-mode main>header .header-title{flex:1;min-width:0;gap:2px}
+body.group-mode main>header .header-title .caption{display:none}
+.group-header-meta{order:2;display:flex;align-items:center;gap:7px;min-width:0;max-width:100%;color:#6f857c;font-size:10px;line-height:1.3}
+.group-header-meta[hidden]{display:none}
+.group-header-meta .status-pill{flex:0 0 auto;padding:2px 7px;font-size:9px}
+#group-description,#group-cwd{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#group-description{max-width:min(34vw,420px);color:#536b62}
+#group-cwd{color:#7b8e86}
+#group-more{position:relative;flex:0 0 auto;color:#263634}
+#group-more[hidden]{display:none}
+#group-more>summary{display:flex;align-items:center;min-height:34px;padding:7px 11px;border:1px solid #cbd8d2;border-radius:8px;background:#fff;color:#3f5c52;font-size:11px;cursor:pointer;list-style:none;user-select:none}
+#group-more>summary::-webkit-details-marker{display:none}
+#group-more>summary::after{content:'⋮';margin-left:6px;font-size:15px;line-height:10px}
+#group-more[open]>summary{background:#e9f1ed;border-color:#adc5ba}
+.group-more-menu{position:absolute;top:calc(100% + 7px);right:0;z-index:20;display:flex;flex-direction:column;gap:3px;width:220px;padding:7px;border:1px solid #cad8d1;border-radius:11px;background:rgba(255,255,255,.98);box-shadow:0 12px 34px #102b2028;backdrop-filter:blur(14px)}
+.group-more-menu button{display:flex;align-items:center;justify-content:flex-start;width:100%;min-height:34px;padding:7px 9px;border:0;background:transparent;color:#334e45;font-size:11px;text-align:left}
+.group-more-menu button:hover{background:#edf3f0}
+.group-more-menu .concurrency-control{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0;padding:7px 9px;border-top:1px solid #e6ece9;border-bottom:1px solid #e6ece9;color:#526a61;font-size:11px}
+.group-more-menu #group-concurrency{box-sizing:border-box;width:58px;min-width:58px;margin:0;padding:5px 20px 5px 8px;border:1px solid #cbd8d2;border-radius:7px;background:#fff;color:#263634;font:inherit;text-align:center;text-align-last:center}
+.group-more-menu .group-delete{color:#98493f}
+.group-more-menu .group-delete:hover{background:#fff0ed}
+
+body:not(.group-mode) main>header .header-title .caption{display:none}
+.thread-header-meta{order:2;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#71867d;font-size:10px;line-height:1.3}
+body.group-mode .thread-header-meta,body.group-mode #thread-more{display:none!important}
+#thread-more{position:relative;flex:0 0 auto;color:#263634}
+#thread-more[hidden]{display:none}
+#thread-more>summary{display:flex;align-items:center;min-height:34px;padding:7px 11px;border:1px solid #cbd8d2;border-radius:8px;background:#fff;color:#3f5c52;font-size:11px;cursor:pointer;list-style:none;user-select:none}
+#thread-more>summary::-webkit-details-marker{display:none}
+#thread-more>summary::after{content:'⋮';margin-left:6px;font-size:15px;line-height:10px}
+#thread-more[open]>summary{background:#e9f1ed;border-color:#adc5ba}
+.thread-more-menu{position:absolute;top:calc(100% + 7px);right:0;z-index:20;width:min(380px,calc(100vw - 20px));padding:8px;border:1px solid #cad8d1;border-radius:11px;background:rgba(255,255,255,.98);box-shadow:0 12px 34px #102b2028;backdrop-filter:blur(14px)}
+.thread-more-menu .thread-history-menu{display:flex;flex-direction:column;align-items:stretch;gap:7px;min-height:0;padding:2px;background:transparent;border:0;font-size:11px}
+.thread-history-menu label{margin:0;color:#62776e}
+.thread-history-menu select{box-sizing:border-box;width:100%;max-width:none;min-height:36px;padding:6px 9px;border:1px solid #cbd8d2;border-radius:7px;background:#f7f9f8;color:#263634}
+.thread-history-menu button{min-height:34px;padding:7px 9px;background:transparent;color:#334e45;font-size:11px}
+.thread-history-menu button:hover{background:#edf3f0}
+.thread-history-menu #jump-latest{width:100%;border-color:transparent;color:#29614e}
+.history-menu-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+
+@media(max-width:700px){
+  body.group-mode main>header{height:52px;min-height:52px;padding:4px 7px;gap:6px}
+  body.group-mode main>header h1{font-size:14px}
+  .group-header-meta{gap:5px;font-size:9px}
+  #group-description{display:none}
+  #group-more>summary{min-height:34px;padding:6px 8px;font-size:10px}
+  #group-more>summary::after{margin-left:3px}
+  .group-more-menu{position:fixed;top:calc(var(--viewport-top,0px) + 49px);right:7px;width:min(240px,calc(100vw - 14px))}
+  .thread-header-meta{font-size:9px}
+  #thread-more>summary{min-height:34px;padding:6px 8px;font-size:10px}
+  #thread-more>summary::after{margin-left:3px}
+  .thread-more-menu{position:fixed;top:calc(var(--viewport-top,0px) + 49px);right:7px;width:min(360px,calc(100vw - 14px))}
+  .group-center{min-height:0!important}
 }

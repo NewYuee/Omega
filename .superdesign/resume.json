@@ -15,17 +15,23 @@
         "public/markdown.js",
         "public/attachments.js",
         "public/ui.js",
-        "public/model-settings.js"
+        "public/model-settings.js",
+        "public/groups.js",
+        "client/src/ChatTimeline.tsx",
+        "client/src/product.css"
       ],
       "fingerprints": {
         ".superdesign/design-system.md": "a586c3d99d7b41f90dbd57ab1eb12307a0c2e536ecff84d82dc753ced6828f94",
-        "public/index.html": "229ba04cf9aabd01a1b21b4cdf2f573c8714a0e9acd3c1503205f4af2fcd6a5b",
-        "public/style.css": "fbb9b7285a2dc46fad807d864b69eb63da34a6905e26f64abc2a8efaf0a80568",
-        "public/app.js": "b07e0d3cce907b397739055619e7d93f01be1f88cfce81a836eb2b5738f59ad9",
+        "public/index.html": "308e2034785c17a79c6d13207795f1209712f5225fcbc51e42eae682c2ae6d5e",
+        "public/style.css": "d269c02176a773465e0ce0ad011029dcd3488c6362a49f41bffe108f2b7b610b",
+        "public/app.js": "2c2a28a907bff9814ec1b2b6ffce363e7bfd6e8ae45edaf87bd042ab27183aa4",
         "public/markdown.js": "04591d1925efe76583c26807e8cc809926a5423c9aae0127c540a9cc66a1ee7b",
-        "public/attachments.js": "e88297b11a2aedbfd1ae68ed5c3ea4807f4a2e10d9e3abaa721b2b4fa9bb8b60",
-        "public/ui.js": "291c6a670238a6da271aec73c8576720a11f6965d8a4a67a8121fae05259cdf4",
-        "public/model-settings.js": "046ff93d8558e3e4ba6a25c79614a5d6656754848f6f7baae1faab373cdb398e"
+        "public/attachments.js": "225d8b4ce2d48c689b558482e8190e36506b72bb1f82e5d7c54451a79fab9716",
+        "public/ui.js": "5d53f71e71b766231192dd436ef5371fe937496e09a0f49fb7e4da9ec9022c40",
+        "public/model-settings.js": "843f4a446a4294094763553f04af82777d0179dcedc857142b496c035a315461",
+        "public/groups.js": "f69c4af56674bf9a36afab6d10714a63373026a26a0987b90d9fd4be8e728bb4",
+        "client/src/ChatTimeline.tsx": "871760d576b574e3d0eaa366b482221bc1f9b37c2651f63b218891793698383e",
+        "client/src/product.css": "03dea9437ec65dbce41d644999aa25671c4e722333924b3c5fe72f5322692190"
       },
       "components": [],
       "drafts": {
@@ -35,7 +41,7 @@
           "currentVersion": 5
         }
       },
-      "updatedAt": "2026-09-10T11:53:06.015Z"
+      "updatedAt": "2026-09-14T02:31:19.000Z"
     }
   }
 }
