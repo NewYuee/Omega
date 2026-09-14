@@ -9,6 +9,8 @@ test('Tauri is exposed only as the mobile container while desktop uses Electron'
   assert.equal(pkg.scripts['native:build'],undefined);
   assert.match(pkg.scripts['desktop:dev'],/electron/);
   assert.match(pkg.scripts['desktop:package'],/electron-builder/);
+  // The generated Android Gradle task invokes `npm run -- tauri ...`.
+  assert.equal(pkg.scripts.tauri,'node native/tauri.mjs');
   assert.match(pkg.scripts['mobile:android:init'],/tauri\.mjs android init/);
   assert.match(pkg.scripts['mobile:android:build'],/tauri\.mjs android build/);
   const blocked=spawnSync(process.execPath,['native/tauri.mjs','build'],{cwd:new URL('../',import.meta.url),encoding:'utf8'});

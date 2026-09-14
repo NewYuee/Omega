@@ -6,8 +6,9 @@ import { createModelSettings } from './model-settings.js';
 import { native, apiFetch, initialKey, rememberKey, forgetSessionKey, savedThread, rememberThread, clientDeviceId } from './platform.js';
 import { initGroups } from './groups.js';
 import { createOmegaTransport } from './transport.js';
+import { isThreadWriterConflict,threadWriterBusyMessage } from '../../src/shared/thread-errors.js';
 type JsonRecord = Record<string, any>;
-type ControllerError = Error & {status?:number};
+type ControllerError = Error & {status?:number;code?:string;threadId?:string};
 type PendingSubmission = {fingerprint:string;id:string;settingsRevision:number};
 const errorValue=(cause:unknown):ControllerError=>cause instanceof Error?cause as ControllerError:Object.assign(new Error(String(cause)),{status:undefined});
 const $=<T extends HTMLElement=HTMLElement>(id:string):T=>{
@@ -139,18 +140,21 @@ async function hydrate() {
     render(); controls();
   } finally {timeline.finishHydration(request.version)}
 }
-async function select(id:string, closeMenu=true) {
+async function select(id:string, closeMenu=true,notifyWriterConflict=closeMenu) {
   if(conversations.isDeleted(id))return;
-  if(closeMenu)window.omegaReactWorkspace?.closeSidebar();
+  if(closeMenu){error('');window.omegaReactWorkspace?.closeSidebar();}
   const version=timeline.beginThread();if(closeMenu)preferences.reset();
   attachments.clear();
   session.selectThread(id);rememberThread(id);
   lifecycle.restartStream();
   window.omegaReactChat?.followLatest();render(); renderApprovals(); controls();
-  await rpc('thread/resume', { threadId: id }, {summaryOnly:true});
+  let writerConflict=false;
+  try{await rpc('thread/resume',{threadId:id},{summaryOnly:true});}
+  catch(cause){if(!isThreadWriterConflict(cause))throw cause;writerConflict=true;}
   if(!timeline.isCurrent(version))return;
   await hydrate(); await list(); controls();
   await markThreadRead(id);
+  if(writerConflict&&notifyWriterConflict)error(threadWriterBusyMessage());
 }
 async function selectAt(id:string,turnId:string|null=null){await select(id);if(!turnId||turnId===timeline.selectedTurn)return;timeline.selectAt(turnId);await hydrate();}
 window.omegaNavigation={openThread:selectAt};
@@ -207,7 +211,9 @@ async function connect() {
   if (!native) await rememberKey(key);
   session.applyStatus(status,{initialize:true});session.setConnection(true,true,'已连接');
   lifecycle.restartStream();
-  await syncReadState();await list(); if (session.snapshot.threadId) await select(session.snapshot.threadId,false); renderApprovals(); controls();
+  await syncReadState();await list();
+  if(session.snapshot.threadId)await select(session.snapshot.threadId,false,false).catch(cause=>error(`上次会话暂时无法加载：${errorValue(cause).message}`));
+  renderApprovals(); controls();
   lifecycle.startPolling();
 }
 async function openConnection(){if(native){const setup=$<HTMLDialogElement>('setup');if(!setup.open)setup.showModal();return;}await openDialog('connection',{onSubmit:async (values:JsonRecord)=>{key=values.accessKey.trim();await connect();}}).catch(cause=>error(errorValue(cause).message));}
@@ -232,7 +238,8 @@ async function sendMessage(value:string) {
     return true;
   } catch(cause) {
     const caught=errorValue(cause);
-    if(caught.status===409&&/模型设置/.test(caught.message)){pendingSubmission=null;try{await preferences.refresh();}catch{} error(caught.message+'；本次未发送。');}
+    if(isThreadWriterConflict(caught)){pendingSubmission=null;error(threadWriterBusyMessage());}
+    else if(caught.status===409&&/模型设置/.test(caught.message)){pendingSubmission=null;try{await preferences.refresh();}catch{} error(caught.message+'；本次未发送。');}
     else error(caught.message + (requested ? '；请求可能已到达服务端，请先核对会话，勿立即重复发送。' : '；消息未发送，请修正后重试。'));
     return false;
   }
@@ -241,4 +248,4 @@ async function sendMessage(value:string) {
 async function stopMessage(){const current=session.snapshot;try{await rpc('turn/interrupt',{threadId:current.threadId,turnId:current.threadId?current.active[current.threadId]:undefined})}catch(cause){error(errorValue(cause).message)}}
 // Native foreground/network lifecycle is centralized in the TypeScript runtime.
 if(native)lifecycle.bindNative();
-controls(); if (key) connect().catch(cause=>{error(errorValue(cause).message);openConnection();}); else openConnection();
+controls(); if(key)connect().catch(cause=>{const caught=errorValue(cause);error(caught.message);if(!session.snapshot.authenticated||caught.status===401)openConnection();});else openConnection();

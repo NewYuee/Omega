@@ -12,7 +12,7 @@ export function createOmegaTransport({fetchImpl,getKey,deviceId,onUnauthorized=(
       let result:any;
       try{result=await response.json();}
       catch(error){if(controller.signal.aborted)throw error;throw new Error(`服务器响应格式异常（HTTP ${response.status}），请检查网络或 FRP 转发`);}
-      if(!response.ok)throw Object.assign(new Error(result.error||`HTTP ${response.status}`),{status:response.status});
+      if(!response.ok)throw Object.assign(new Error(result.error||`HTTP ${response.status}`),{status:response.status,code:result.code,threadId:result.threadId});
       return result;
     }catch(error){if(controller.signal.aborted)throw new Error(`请求等待超过 ${Math.round(timeoutMs/1000)} 秒，结果尚未确认`);throw error;}
     finally{clearTimeout(timer);}

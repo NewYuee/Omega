@@ -34,10 +34,10 @@
       "fingerprints": {
         ".superdesign/design-system.md": "a586c3d99d7b41f90dbd57ab1eb12307a0c2e536ecff84d82dc753ced6828f94",
         "public/index.html": "c2434d955bdc3d277fb1fe6b32a14de8583346d91e3d6b9d2150bd2bac92705d",
-        "public/style.css": "60636544041ef83fcad1c517b9ae0d465a95e28663e8d40284697792344cadd8",
-        "client/src/AppController.ts": "fd85a1c863794ab46ea62c532a152ec87e252f29b6d6bcc99ee7a4e40eaa9804",
+        "public/style.css": "9b99cc4b4ebc5e9183499498c6f7e52648ba8cd3b335692401926c298bf05500",
+        "client/src/AppController.ts": "e024911c465ee4d06059f7abbb5f59aef1c7126fd68cfc1cbd87a9a0ccae6311",
         "public/markdown.js": "04591d1925efe76583c26807e8cc809926a5423c9aae0127c540a9cc66a1ee7b",
-        "client/src/transport.ts": "5ea2a51acce0a011d4380985a4b527e37fa377152a8b3fe339ceb12e390b6d03",
+        "client/src/transport.ts": "cbdc91a2a3008805f98ca53e9d2dec1d1e644805977774acbd739d0c4d6ad7f6",
         "client/src/platform.ts": "570412ab2b1e6e78263b082989ec81127627434b6c945280d568b7e995efbfe1",
         "client/src/attachments.ts": "64ccf4e6e5e56e2307dbf6a0b7e209db90b372662f744e9042832f8f3ca54437",
         "client/src/ui.ts": "66d3a8af9c474059ebdd8f6277be4eea45aa43d420f5658fdbdda9430c335ba8",
@@ -51,19 +51,19 @@
         "client/src/WorkspaceSidebar.tsx": "e45404b1df271a74d0c599e46db48b2e54e636af3ec9020889208549f8433626",
         "client/src/GroupPanels.tsx": "dc47217269c42055a298e69ef78cf95ad9bf311e48077e375e25a87af539b48f",
         "client/src/Notice.tsx": "41d4feca05f1e58c90eed0ad698b258ef4717932f9f84b83be5732af3e8acebc",
-        "client/src/FormLayer.tsx": "ab684cf63aefd707964b9f8fe3eb741a4f196ba1335e58a179504defa7043472",
+        "client/src/FormLayer.tsx": "b9ccca885b00f46b9e3ab74f3a52139b32189e853d8c68895af5470c51be69f8",
         "client/src/ChatTimeline.tsx": "5ed958b5f39804e4ef2ed4c5a145e966bc54a6257b53bcf8b86921d51bf6fb52",
-        "client/src/product.css": "1c657d4b3d0bba864e5bf793c24646fed454a2d0a206bf7fa5bfe7a4bb52d826"
+        "client/src/product.css": "522989b755e46ed0df33b6859a593b2c93426349a892bc93cf955fd80d7a8ed2"
       },
       "components": [],
       "drafts": {
         "7f0dd82d-6b19-428d-907e-7e70b1d80666": {
           "title": "Omega · 工作持续发生 (Mobile Responsive Chat UI)",
           "visualDirection": "Compact mobile header, conversation drawer with rename/delete, one-line growing composer and immersive editor; preserves desktop sidebar and chat bubbles; compact model settings dialog with model-specific reasoning effort; native server connection dialog uses existing typography and controls, explicit HTTP warning and secure device storage",
-          "currentVersion": 5
+          "currentVersion": 6
         }
       },
-      "updatedAt": "2026-09-14T07:00:00.000Z"
+      "updatedAt": "2026-09-14T08:05:00.000Z"
     }
   }
 }

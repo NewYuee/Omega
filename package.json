@@ -8,6 +8,7 @@
     "node": ">=22.18"
   },
   "scripts": {
+    "tauri": "node native/tauri.mjs",
     "mobile:tauri": "node native/tauri.mjs",
     "start": "npm run web:build && node server.ts",
     "service:start": "npm run web:build && node scripts/omega-supervisor.mjs",

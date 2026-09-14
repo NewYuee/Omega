@@ -26,10 +26,10 @@ button:focus-visible{outline:2px solid #67b599;outline-offset:2px}
 .markdown-body blockquote{border-left:3px solid #8eb5a2;margin:16px 0;padding:8px 16px;background:#edf3ef;color:#52695e}
 .markdown-body blockquote p:last-child{margin-bottom:0}.markdown-body a{color:#216c53;text-decoration:underline;text-underline-offset:3px}
 .markdown-body code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;background:#e9eeeb;padding:2px 5px;border-radius:4px}
-.code-block{margin:16px 0 20px;border:1px solid #d6e1da;border-radius:8px;overflow:hidden;background:#f0f4f1}
-.code-toolbar{display:flex;align-items:center;justify-content:space-between;padding:7px 14px;border-bottom:1px solid #d6e1da;color:#64786c;font-size:11px}
-.code-toolbar button{padding:3px 9px;font-size:11px;background:transparent;border:0}
-.markdown-body pre{margin:0;padding:16px;overflow-x:auto;white-space:pre;line-height:1.65}.markdown-body pre code{background:transparent;padding:0;border-radius:0}
+.code-block{margin:16px 0 20px;border:1px solid #ccd8d1;border-radius:8px;overflow:hidden;background:#edf2ef}
+.code-toolbar{display:flex;align-items:center;justify-content:space-between;padding:7px 14px;border-bottom:1px solid #ccd8d1;background:#e4ebe7;color:#667a70;font-size:11px}
+.code-toolbar button{padding:3px 9px;font-size:11px;color:#346451;background:transparent;border:0}
+.markdown-body pre{margin:0;padding:16px;overflow-x:auto;white-space:pre;color:#30463d;line-height:1.65}.markdown-body pre code{background:transparent;padding:0;border-radius:0;color:inherit}
 .table-scroll{overflow-x:auto;margin:16px 0}.markdown-body table{border-collapse:collapse;width:100%;font-size:13px}.markdown-body th,.markdown-body td{padding:10px 12px;border:1px solid #d6e1da;text-align:left;min-width:100px}.markdown-body th{background:#eaf1ec;font-weight:600}
 .markdown-body hr{border:0;border-top:1px solid #d6e1da;margin:24px 0}.markdown-body input[type=checkbox]{display:inline;width:auto;margin:0 6px 0 0}
 .key-options{display:flex;align-items:center;justify-content:space-between;gap:12px}.key-options label{margin:0;display:flex;gap:8px;align-items:center}.key-options input{width:auto;margin:0}.key-options button{width:auto;font-size:12px}#key-error{color:#9b3c30}

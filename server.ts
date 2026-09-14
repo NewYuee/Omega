@@ -16,6 +16,7 @@ import { AutomationService } from './src/server/automation-service.ts';
 import { ReadStateStore } from './src/server/read-state.ts';
 import { SearchStore } from './src/server/search-store.ts';
 import { applyPendingRestore,createBackup,stageRestore } from './src/server/backup.ts';
+import { activeWriterThreadId,THREAD_WRITER_BUSY,threadWriterBusyMessage } from './src/shared/thread-errors.ts';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const state = process.env.OMEGA_STATE_DIR || path.join(root, '.omega');
@@ -255,7 +256,7 @@ async function rawBody(req:http.IncomingMessage,max=260*1024*1024){let size=0;co
 function json(res:http.ServerResponse,status:number,value:unknown){res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify(value));}
 const server = http.createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'");
   try {
     const url=new URL(req.url||'/','http://localhost');
     if (url.pathname.startsWith('/api/')) {
@@ -583,7 +584,11 @@ const server = http.createServer(async (req, res) => {
     let file;if(vendors[url.pathname])file=path.join(root,vendors[url.pathname]);else{const relative=url.pathname==='/'?'index.html':decodeURIComponent(url.pathname.slice(1));if(relative.includes('..')||path.isAbsolute(relative)){res.writeHead(404);return res.end();}const built=path.join(root,'web-dist',relative),source=path.join(root,'public',relative);try{await stat(built);file=built;}catch{file=source;}}
     let contents;try{contents=await readFile(file);}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT'){res.writeHead(404);return res.end();}throw error;}
     const ext=path.extname(file),types:Record<string,string>={'.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml','.png':'image/png','.ico':'image/x-icon'};res.setHeader('content-type',types[ext]||'application/octet-stream');res.end(contents);
-  } catch (error:any) { if (!res.headersSent) json(res, error.status || 400, { error: error.message }); else res.end(); }
+  } catch (error:any) {
+    const busyThreadId=activeWriterThreadId(error);
+    if (!res.headersSent) json(res,busyThreadId?409:error.status||400,busyThreadId?{error:threadWriterBusyMessage(),code:THREAD_WRITER_BUSY,threadId:busyThreadId}:{error:error.message});
+    else res.end();
+  }
 });
 server.listen(Number(process.env.PORT || 4310), process.env.OMEGA_HOST || '127.0.0.1', () => console.log(`Omega: http://${process.env.OMEGA_HOST || '127.0.0.1'}:${process.env.PORT || 4310}\nAccess key file: ${tokenPath}\nWorkspace: ${workspace}`));
 for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => { clearInterval(imageCleanupTimer); automationService.close(); for (const client of clients) client.end(); server.close(); bridge.close(); groups.close(); automationStore.close(); readState.close(); searchStore.close(); });
