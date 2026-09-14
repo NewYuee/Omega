@@ -11,27 +11,49 @@
         ".superdesign/design-system.md",
         "public/index.html",
         "public/style.css",
-        "public/app.js",
+        "client/src/AppController.ts",
         "public/markdown.js",
-        "public/attachments.js",
-        "public/ui.js",
-        "public/model-settings.js",
-        "public/groups.js",
+        "client/src/transport.ts",
+        "client/src/platform.ts",
+        "client/src/attachments.ts",
+        "client/src/ui.ts",
+        "client/src/model-settings.ts",
+        "client/src/groups.ts",
+        "client/src/group-room.ts",
+        "client/src/AppState.ts",
+        "client/src/SessionRuntime.ts",
+        "client/src/main.tsx",
+        "client/src/ConversationHeader.tsx",
+        "client/src/WorkspaceSidebar.tsx",
+        "client/src/GroupPanels.tsx",
+        "client/src/Notice.tsx",
+        "client/src/FormLayer.tsx",
         "client/src/ChatTimeline.tsx",
         "client/src/product.css"
       ],
       "fingerprints": {
         ".superdesign/design-system.md": "a586c3d99d7b41f90dbd57ab1eb12307a0c2e536ecff84d82dc753ced6828f94",
-        "public/index.html": "308e2034785c17a79c6d13207795f1209712f5225fcbc51e42eae682c2ae6d5e",
-        "public/style.css": "d269c02176a773465e0ce0ad011029dcd3488c6362a49f41bffe108f2b7b610b",
-        "public/app.js": "2c2a28a907bff9814ec1b2b6ffce363e7bfd6e8ae45edaf87bd042ab27183aa4",
+        "public/index.html": "c2434d955bdc3d277fb1fe6b32a14de8583346d91e3d6b9d2150bd2bac92705d",
+        "public/style.css": "60636544041ef83fcad1c517b9ae0d465a95e28663e8d40284697792344cadd8",
+        "client/src/AppController.ts": "fd85a1c863794ab46ea62c532a152ec87e252f29b6d6bcc99ee7a4e40eaa9804",
         "public/markdown.js": "04591d1925efe76583c26807e8cc809926a5423c9aae0127c540a9cc66a1ee7b",
-        "public/attachments.js": "225d8b4ce2d48c689b558482e8190e36506b72bb1f82e5d7c54451a79fab9716",
-        "public/ui.js": "5d53f71e71b766231192dd436ef5371fe937496e09a0f49fb7e4da9ec9022c40",
-        "public/model-settings.js": "843f4a446a4294094763553f04af82777d0179dcedc857142b496c035a315461",
-        "public/groups.js": "f69c4af56674bf9a36afab6d10714a63373026a26a0987b90d9fd4be8e728bb4",
-        "client/src/ChatTimeline.tsx": "871760d576b574e3d0eaa366b482221bc1f9b37c2651f63b218891793698383e",
-        "client/src/product.css": "03dea9437ec65dbce41d644999aa25671c4e722333924b3c5fe72f5322692190"
+        "client/src/transport.ts": "5ea2a51acce0a011d4380985a4b527e37fa377152a8b3fe339ceb12e390b6d03",
+        "client/src/platform.ts": "570412ab2b1e6e78263b082989ec81127627434b6c945280d568b7e995efbfe1",
+        "client/src/attachments.ts": "64ccf4e6e5e56e2307dbf6a0b7e209db90b372662f744e9042832f8f3ca54437",
+        "client/src/ui.ts": "66d3a8af9c474059ebdd8f6277be4eea45aa43d420f5658fdbdda9430c335ba8",
+        "client/src/model-settings.ts": "a7da0c479dfa5655c386f0037ed308d13f5b1501da58103228bd52b4ecec01c7",
+        "client/src/groups.ts": "7b451ca3c61d834403759a0981d4a47587ba3db127344696784b5935986c4399",
+        "client/src/group-room.ts": "fcada3c14ea1904088df59cf7c40cac469d00cda6b5126fe4439ee31dec331e4",
+        "client/src/AppState.ts": "16d477f791a8b8d2d43bbf045e3a0de93052a38c3db6b7c94d4e834de0b4224f",
+        "client/src/SessionRuntime.ts": "337c9bea63526ef4d1298f441bbc459b919d5aef0bd565ea353d857ed6f706f9",
+        "client/src/main.tsx": "774a48961d4632d8f252007d4eae0533798aab883b6b803998c8c2e30e0974f7",
+        "client/src/ConversationHeader.tsx": "fd3b614ae5902ab1ea5ac75f513c4f1889932b7d1cb744ce9841e5a7dc44992a",
+        "client/src/WorkspaceSidebar.tsx": "e45404b1df271a74d0c599e46db48b2e54e636af3ec9020889208549f8433626",
+        "client/src/GroupPanels.tsx": "dc47217269c42055a298e69ef78cf95ad9bf311e48077e375e25a87af539b48f",
+        "client/src/Notice.tsx": "41d4feca05f1e58c90eed0ad698b258ef4717932f9f84b83be5732af3e8acebc",
+        "client/src/FormLayer.tsx": "ab684cf63aefd707964b9f8fe3eb741a4f196ba1335e58a179504defa7043472",
+        "client/src/ChatTimeline.tsx": "5ed958b5f39804e4ef2ed4c5a145e966bc54a6257b53bcf8b86921d51bf6fb52",
+        "client/src/product.css": "1c657d4b3d0bba864e5bf793c24646fed454a2d0a206bf7fa5bfe7a4bb52d826"
       },
       "components": [],
       "drafts": {
@@ -41,7 +63,7 @@
           "currentVersion": 5
         }
       },
-      "updatedAt": "2026-09-14T02:31:19.000Z"
+      "updatedAt": "2026-09-14T07:00:00.000Z"
     }
   }
 }

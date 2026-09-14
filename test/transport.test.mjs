@@ -1,6 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createOmegaTransport} from '../public/transport.js';
+import {build} from 'esbuild';
+const bundled=await build({entryPoints:['client/src/transport.ts'],bundle:true,write:false,platform:'node',format:'esm'});
+const {createOmegaTransport}=await import('data:text/javascript;base64,'+Buffer.from(bundled.outputFiles[0].contents).toString('base64'));
 
 test('transport centralizes auth, device identity and RPC envelopes',async()=>{
   const calls=[];

@@ -92,5 +92,4 @@ globalThis.omegaBack = () => {
   if (dialog.dispatchEvent(event)) dialog.close();
   return true;
 };
-await import('../public/app.js');
 await import('../client/src/main.tsx');
