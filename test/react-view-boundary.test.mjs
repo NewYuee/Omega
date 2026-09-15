@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {access,readFile} from 'node:fs/promises';
+import {declaredVariables} from './helpers/declarations.mjs';
 
 test('TypeScript controllers delegate product views exclusively to React',async()=>{
   for(const file of ['app','transport','platform','attachments','model-settings','groups','group-room','ui']){
@@ -76,9 +77,8 @@ test('TypeScript controllers delegate product views exclusively to React',async(
   assert.match(app,/const conversations=runtime\.conversations/);
   assert.match(app,/const timeline=runtime\.timeline/);
   assert.match(app,/session\.reduce\(message\)/);
-  assert.doesNotMatch(app,/let .*\b(?:active|approvals|authenticated|canChangeKey|lastEventId|streamController|refreshTimer|resumeTimer|resuming)\b/);
-  assert.doesNotMatch(app,/const (?:unreadThreads|unreadThreadCounts|unreadThreadPositions|threadNames|deletedThreads)/);
-  assert.doesNotMatch(app,/let .*\b(?:items|selectionVersion|outline|selectedTurn|historyMode|historyCursor|turnMetrics|metricsRevision|turnModel|metricsText)\b/);
+  const forbidden=new Set(['active','approvals','authenticated','canChangeKey','lastEventId','streamController','refreshTimer','resumeTimer','resuming','unreadThreads','unreadThreadCounts','unreadThreadPositions','threadNames','deletedThreads','items','selectionVersion','outline','selectedTurn','historyMode','historyCursor','turnMetrics','metricsRevision','turnModel','metricsText']);
+  assert.deepEqual((await declaredVariables(app)).filter(binding=>forbidden.has(binding.name)),[],'controller must not redeclare React-owned state');
   assert.doesNotMatch(app,/function (?:itemText|renderMetrics|setMetrics)\s*\(/);
   assert.doesNotMatch(app,/function (?:stream|resumeConnection)\s*\(/);
   assert.match(runtime,/function createSession/);
