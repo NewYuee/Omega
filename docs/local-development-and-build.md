@@ -215,7 +215,11 @@ npm run mobile:android:build:local-release -- --target aarch64
 - macOS Electron DMG/ZIP；
 - Windows x64 Electron NSIS 安装程序。
 
-在 GitHub 仓库的 **Actions → Build Omega → Run workflow** 可手动构建。完成后从该次运行的 **Artifacts** 下载，产物默认保留 14 天。
+`main` 推送和 **Actions → Build Omega → Run workflow** 仅执行源码验证，不构建安装包。仅仓库所有者推送新 `v*` 标签时才构建安装包。
+
+所有平台构建成功后，独立发布任务下载本次运行的三个平台产物，检查 APK、DMG、ZIP、EXE 均存在，再上传到标签对应的 GitHub Release。不存在 Release 时先创建草稿，上传成功后发布；已有 Release 保留说明。重跑会更新同名附件。只有发布任务拥有 `contents: write`，其他任务保持只读；发布还检查重跑发起者是否为仓库所有者。
+
+安装包也可从该次运行的 **Artifacts** 下载，那里默认保留 14 天。Release 附件不受此保留期影响。旧标签使用旧版工作流，修改本文件不会自动给旧 Release 补传附件。
 
 Android 未配置 Secrets 时使用该次 Runner 临时生成的证书，适合安装验证，但不同 CI 运行产物可能不能彼此覆盖安装。需要稳定升级或正式分发时，在仓库 Actions Secrets 中配置：
 
