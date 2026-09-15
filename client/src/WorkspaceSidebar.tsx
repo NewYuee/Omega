@@ -1,15 +1,23 @@
+import {parseThreadOrder,sortThreads,moveThread,type ThreadSort} from './thread-order.js';
 import {createRoot} from 'react-dom/client';
-import {useEffect,useState} from 'react';
+import {useEffect,useState,useRef} from 'react';
 import {appStore,useAppState} from './AppState.js';
 
-type Thread={id:string;name?:string;preview?:string;unread?:boolean;unreadCount?:number};
+type Thread={id:string;updatedAt?:unknown;createdAt?:unknown;name?:string;preview?:string;unread?:boolean;unreadCount?:number};
 type Group={id:string;name:string;memberCount:number;openRequirementCount?:number;status?:string;unread?:boolean;unreadCount?:number};
 interface ThreadActions{open(id:string):void;rename(thread:Thread):void;remove(thread:Thread):void}
 interface GroupActions{open(id:string):void;status(value?:string):string}
 function Icon({kind}:{kind:'edit'|'trash'|'close'}){const path=kind==='edit'?'m16 3 5 5-12 12-6 1 1-6L16 3ZM14 5l5 5':kind==='trash'?'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7':'m6 6 12 12M6 18 18 6';return <svg className="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={path}/></svg>}
 
-function Threads(){const state=useAppState(),items=state.threads as Thread[],selected=state.threadId,actions=state.threadActions as unknown as ThreadActions;if(!actions)return null;
-  return <>{items.map(thread=>{const name=thread.name||thread.preview||'新会话';return <div className={`thread-row${thread.id===selected?' selected':''}`} data-thread-id={thread.id} key={thread.id}>
+const orderKey='omega-thread-order-v1';
+function readOrder(){try{return parseThreadOrder(localStorage.getItem(orderKey))}catch{return parseThreadOrder(null)}}
+function Threads(){const state=useAppState(),[order,setOrder]=useState(readOrder),drag=useRef<string|null>(null),items=sortThreads(state.threads as Thread[],order),selected=state.threadId,actions=state.threadActions as unknown as ThreadActions;
+  useEffect(()=>{const changed=(event:StorageEvent)=>{if(event.key===orderKey)setOrder(readOrder())};window.addEventListener('storage',changed);return()=>window.removeEventListener('storage',changed)},[]);
+  const save=(next:typeof order)=>{setOrder(next);try{localStorage.setItem(orderKey,JSON.stringify(next))}catch{}};
+  const move=(id:string,target:string)=>save({mode:'manual',ids:moveThread(items.map(item=>item.id),id,target)});
+  if(!actions)return null;
+  return <><label className="thread-sort">排序 <select aria-label="会话排序" value={order.mode} onChange={event=>save({mode:event.target.value as ThreadSort,ids:order.ids.length?order.ids:items.map(item=>item.id)})}><option value="updated">最近更新</option><option value="created">最近创建</option><option value="name">名称 A–Z</option><option value="manual">自定义顺序</option></select></label>{order.mode==='manual'&&<small className="thread-sort-help">拖动 ↕ 调整，或使用上下按钮</small>}{items.map((thread,index)=>{const name=thread.name||thread.preview||'新会话';return <div className={`thread-row${thread.id===selected?' selected':''}`} data-thread-id={thread.id} key={thread.id} onDragOver={event=>{if(order.mode==='manual'&&drag.current){event.preventDefault();event.dataTransfer.dropEffect='move'}}} onDrop={event=>{event.preventDefault();if(drag.current){move(drag.current,thread.id);drag.current=null}}}>
+    {order.mode==='manual'&&<div className="thread-move"><span draggable title="拖动排序" onDragStart={event=>{drag.current=thread.id;event.dataTransfer.setData('text/plain',thread.id);event.dataTransfer.effectAllowed='move'}} onDragEnd={()=>{drag.current=null}}>↕</span><button type="button" disabled={index===0} aria-label={`上移 ${name}`} onClick={()=>move(thread.id,items[index-1].id)}>↑</button><button type="button" disabled={index===items.length-1} aria-label={`下移 ${name}`} onClick={()=>move(thread.id,items[index+1].id)}>↓</button></div>}
     <button className="thread-open" title={name} onClick={()=>actions.open(thread.id)}><span className="sidebar-label">{name}</span>{thread.unread&&<span className="unread-dot" aria-label={`${thread.unreadCount||1} 条未读回复`}>{Math.min(thread.unreadCount||1,99)}{(thread.unreadCount||1)>99?'＋':''}</span>}</button>
     <button type="button" className="thread-rename" title="重命名" aria-label={`重命名 ${name}`} onClick={()=>actions.rename(thread)}><Icon kind="edit"/></button>
     <button type="button" className="thread-delete" title="删除会话" aria-label={`删除 ${name}`} onClick={()=>actions.remove(thread)}><Icon kind="trash"/></button>

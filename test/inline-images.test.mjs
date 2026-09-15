@@ -1,0 +1,9 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {ImageStore} from '../src/server/images.ts';
+import {imageMarker,splitImageText} from '../src/shared/inline-images.ts';
+import {historyPage} from '../src/server/history.ts';
+
+test('uploaded image references expand in text order, not upload order',async()=>{const store=new ImageStore('/images');store.resolve=async id=>'/images/'+id+'.jpg';const result=await store.turnInput([{type:'text',text:'之前'+imageMarker('b')+'中间'+imageMarker('a')+'之后'}],['a','b']);assert.deepEqual(result,[{type:'text',text:'之前'},{type:'localImage',path:'/images/b.jpg'},{type:'text',text:'中间'},{type:'localImage',path:'/images/a.jpg'},{type:'text',text:'之后'}]);assert.deepEqual(await store.turnInput([{type:'text',text:'旧消息'}],['a']),[{type:'text',text:'旧消息'},{type:'localImage',path:'/images/a.jpg'}]);await assert.rejects(store.turnInput([{type:'localImage',path:'/private/file'}],[]),/仅支持/);assert.deepEqual(splitImageText(imageMarker('outside'),['a']),[{type:'text',text:imageMarker('outside')}]);});
+
+test('history retains image positions between text and supports original image references',()=>{const refs=[{id:'b',expiresAt:Date.now()+10000},{id:'a',expiresAt:Date.now()+10000}];const result=historyPage({id:'thread',turns:[{id:'turn',items:[{id:'message',type:'userMessage',content:[{type:'text',text:'之前'},{type:'localImage',path:'/images/b.jpg'},{type:'text',text:'中间'},{type:'localImage',path:'/images/a.jpg'},{type:'text',text:'之后'}]}]}]},{},()=>refs);const item=result.turn.items[0];assert.equal(item.pageText,'之前'+imageMarker('b')+'中间'+imageMarker('a')+'之后');assert.equal(item.inlineImages,true);assert.deepEqual(splitImageText(item.pageText,item.images.map(r=>r.id)).map(part=>part.type),['text','image','text','image','text']);});

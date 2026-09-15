@@ -2,13 +2,13 @@ import {apiFetch} from './platform.js';
 
 interface ImageRef{id:string;expiresAt:number}
 interface UploadedImage{id:string;expiresAt?:number}
-interface UploadRecord{name:string;status:string;controller:AbortController;file:File|null;image?:UploadedImage|null;url?:string}
+interface UploadRecord{key:string;name:string;status:string;controller:AbortController;file:File|null;image?:UploadedImage|null;url?:string}
 interface AttachmentOptions{getKey():string;isLocked():boolean;onChange():void;onError(message:string):void}
 
 // Upload state and authenticated image transport. React owns all image rendering.
 export function createAttachments({getKey,isLocked,onChange,onError}:AttachmentOptions) {
   const records:UploadRecord[]=[];
-  let queue=Promise.resolve();
+  let queue=Promise.resolve(),sequence=0;
   async function imageBlob(id:string,thumb:boolean,signal:AbortSignal) {
     const response=await apiFetch('/api/images/'+encodeURIComponent(id)+(thumb?'?size=thumb':''),{headers:{authorization:'Bearer '+getKey()},signal});
     if(!response.ok){
@@ -20,12 +20,12 @@ export function createAttachments({getKey,isLocked,onChange,onError}:AttachmentO
   function removeRecord(record:UploadRecord){record.controller.abort();if(record.url)URL.revokeObjectURL(record.url);const index=records.indexOf(record);if(index>=0)records.splice(index,1);}
   const refresh=()=>onChange();
   function ingest(files:Iterable<File>){
-    if(isLocked())return;
+    if(isLocked())return [];const added:string[]=[];
     for(const file of files){
       if(records.length>=4){onError('每条消息最多 4 张图片');break;}
       if(!['image/png','image/jpeg','image/webp'].includes(file.type)){onError('仅支持 PNG、JPEG、WebP 图片；请先将其他格式转换后上传');continue;}
       if(!file.size||file.size>8*1024*1024){onError('每张图片不得超过 8 MB');continue;}
-      const record:UploadRecord={name:file.name||'粘贴的图片',status:'等待上传…',controller:new AbortController(),file};records.push(record);
+      const record:UploadRecord={key:`image-${++sequence}`,name:file.name||'粘贴的图片',status:'等待上传…',controller:new AbortController(),file};records.push(record);added.push(record.key);
       queue=queue.then(async()=>{
         if(record.controller.signal.aborted){record.file=null;return;}
         try{
@@ -39,13 +39,14 @@ export function createAttachments({getKey,isLocked,onChange,onError}:AttachmentO
         finally{record.file=null;refresh();}
       });
     }
-    refresh();
+    refresh();return added;
   }
   return{
     get ready(){return records.every(record=>record.image&&record.url);},
     get ids(){return records.flatMap(record=>record.image?[record.image.id]:[]);},
-    get records(){return records.map((record,index)=>({index,name:record.name,status:record.status,url:record.url||'',ready:!!record.image&&!!record.url}));},
+    get records(){return records.map((record,index)=>({index,key:record.key,id:record.image?.id,name:record.name,status:record.status,url:record.url||'',ready:!!record.image&&!!record.url}));},
     ingest,
+    removeKey(key:string){const record=records.find(item=>item.key===key);if(!record||isLocked())return;removeRecord(record);refresh();},
     loadImage:(ref:ImageRef,thumb:boolean,signal:AbortSignal)=>imageBlob(ref.id,thumb,signal),
     remove(index:number){const record=records[index];if(!record||isLocked())return;removeRecord(record);refresh();},
     refresh,

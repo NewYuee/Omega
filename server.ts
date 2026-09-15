@@ -1,3 +1,4 @@
+import {inlineImageContent} from './src/shared/inline-images.ts';
 import http from 'node:http';
 import { readFile, mkdir, writeFile, realpath, stat, rename } from 'node:fs/promises';
 import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
@@ -9,8 +10,11 @@ import { ImageStore, imageInfo, MAX_IMAGE_BYTES } from './src/server/images.ts';
 import {PastedTextStore,MAX_PASTED_TEXT_BYTES} from './src/server/pasted-content.ts';
 import { TurnMetrics } from './src/server/metrics.ts';
 import { ModelSettings } from './src/server/model-settings.ts';
+import {groupRoomView} from './src/server/group-room-view.ts';
 import { GroupStore } from './src/server/groups-store.ts';
+import {handoffFiles} from './src/server/handoff-files.ts';
 import { GroupOrchestrator } from './src/server/group-orchestrator.ts';
+import {findTurn} from './src/server/turn-lookup.ts';
 import { groupProgress } from './src/server/group-progress.ts';
 import { AutomationStore } from './src/server/automation-store.ts';
 import { AutomationService } from './src/server/automation-service.ts';
@@ -91,8 +95,8 @@ function attachments(item:Row,threadId:string,turnId:string) {
 function publicItem(item:Row,threadId:string,turnId:string) {
   if (item.type !== 'userMessage') return item;
   const pasteRefs:Row[]=ledger[item.id]?.pasteRefs||turnPastes.get(threadId+':'+turnId)||pendingPastes.get(threadId)||[];
-  return {...item,images:attachments(item,threadId,turnId),pastedTexts:pasteRefs,content:((item.content||[]) as Row[]).flatMap(x =>
-    ['image','localImage'].includes(x.type) ? [{type:'image'}] : x.type==='text'&&String(x.text||'').startsWith('\n\n<omega_pasted_files>')?[]:[x])};
+  return {...item,images:attachments(item,threadId,turnId),pastedTexts:pasteRefs,content:inlineImageContent((item.content||[]) as Row[],attachments(item,threadId,turnId).map(ref=>ref.id)).flatMap(x =>
+    ['image','localImage'].includes(x.type||'') ? [{type:'image'}] : x.type==='text'&&String(x.text||'').startsWith('\n\n<omega_pasted_files>')?[]:[x])};
 }
 function indexSearchItem(item:Row,threadId:string,turnId:string,title=threadId){if(!item||!['userMessage','agentMessage'].includes(item.type))return;const content=item.type==='agentMessage'?item.text:(item.content||[]).map((part:Row)=>part.text||'').join('\n');if(content?.trim())searchStore.index({scope:'thread',id:threadId,anchor:turnId,title,content});}
 let ledgerWrite = Promise.resolve();
@@ -161,7 +165,7 @@ bridge.on('event',(event:Row)=>{
   if (['turn/started','turn/completed','thread/tokenUsage/updated'].includes(event.method)) {
     metricsQueue = metricsQueue.then(async () => {
       const update=await metrics.observe(metricEvent as any);
-      if (update) broadcast({method:'omega/turn-metrics',params:update});
+      if (update) {groups.observeUsage(update.threadId,update.turnId,update.metrics.usage?.totalTokens);broadcast({method:'omega/turn-metrics',params:update});}
     }).catch(e => console.error('Turn metrics unavailable:',e.message));
   }
   if (event.method === 'turn/started') { active.set(event.params.threadId, event.params.turn.id); freshThreads.delete(event.params.threadId); }
@@ -197,7 +201,7 @@ async function startManagedTurn(threadId:string,text:string,submissionId:string,
   ledger[submissionId]={fingerprint:JSON.stringify({threadId,text}),createdAt:Date.now(),threadId,modelSettings:requestedSettings,managed:true};
   try {
     await saveLedger();
-    const result:Row=await bridge.request('turn/start',{threadId,input:[{type:'text',text}],clientUserMessageId:submissionId,...overrides});
+    const result:Row=await bridge.request('turn/start',{threadId,input:[{type:'text',text}],clientUserMessageId:submissionId,...overrides,...(execution.cwd?{cwd:execution.cwd}:{})});
     ledger[submissionId].result=result;
     if(result.turn?.id&&active.get(threadId)==='starting')active.set(threadId,result.turn.id);
     if(requestedSettings&&result.turn?.id){nativeSettings.set(threadId,requestedSettings);turnSettings.set(threadId+':'+result.turn.id,requestedSettings);}
@@ -208,8 +212,7 @@ async function startManagedTurn(threadId:string,text:string,submissionId:string,
 }
 
 async function readTurn(threadId:string,turnId:string):Promise<Row|null> {
-  const result:Row=await bridge.request('thread/turns/list',{threadId,limit:60,sortDirection:'desc',itemsView:'full'});
-  return result.data?.find((turn:Row)=>turn.id===turnId)||null;
+  return findTurn(bridge,threadId,turnId);
 }
 
 async function waitTurn(threadId:string,turnId:string,timeoutMs:number):Promise<Row> {
@@ -240,6 +243,9 @@ async function readTurnText(threadId:string,turnId:string){
 }
 
 orchestrator=new GroupOrchestrator({store:groups,startTurn:startManagedTurn,waitTurn,readTurnText,
+  inspectTurn:readTurn,
+  lookupDispatch:id=>ledger[id]?.result?.turn?.id||null,
+  handoffFiles:tasks=>handoffFiles(path.join(state,'group-handoffs'),tasks),
   readPastes:refs=>pastedTexts.contents(refs),
   interruptTurn:(threadId,turnId)=>bridge.request('turn/interrupt',{threadId,turnId}),
   isThreadActive:id=>active.has(id),isWorkspaceBusy:(cwd,groupId,accessMode='write')=>{
@@ -340,7 +346,7 @@ const server = http.createServer(async (req, res) => {
         const messageKeys=group.messages.map((message:Row)=>createHash('sha256').update(JSON.stringify(message)).digest('hex').slice(0,24));
         const messageIds=group.messages.map((message:Row)=>message.id);
         group.messages=group.messages.filter((_message:Row,index:number)=>!known.has(messageKeys[index]));
-        return json(res,200,{group,messageKeys,messageIds});
+        return json(res,200,{group:url.searchParams.get('view')==='room'?groupRoomView(group):group,messageKeys,messageIds});
       }
       if(url.pathname==='/api/integrations'&&req.method==='GET'){
         await ready;
@@ -435,11 +441,13 @@ const server = http.createServer(async (req, res) => {
           const memberCwd=await resolveMemberWorkspace(check.thread.cwd,input.cwd||member.cwd),update={...input,threadId:selectedThreadId,cwd:memberCwd};
           result=groups.updateMember(input.groupId,input.memberId,update,input.requirementId);
         }
+        else if(input.action==='setBudget'){result=groups.extendBudget(input.groupId,input.requirementId,input);orchestrator.changed(input.groupId);orchestrator.schedule(input.groupId);}
         else if(input.action==='setConcurrency'){result=groups.setConcurrency(input.groupId,input.maxConcurrency,input.requirementId);orchestrator.schedule(input.groupId);}
         else if(input.action==='submit'){input.pasteRefs=await pastedTexts.refs(input.pasteIds||[]);result=orchestrator.submit(input.groupId,input);}
         else if(input.action==='updateTask')result=groups.updateDraftTask(input.groupId,input.requirementId,input);
         else if(input.action==='confirm')result=orchestrator.confirm(input.groupId,input.requirementId);
-        else if(input.action==='retry')result=orchestrator.retry(input.groupId,input.requirementId);
+        else if(input.action==='retry')result=await orchestrator.retry(input.groupId,input.requirementId);
+        else if(input.action==='reassign'){result=groups.reassignTask(input.groupId,input.taskId,input.memberId);orchestrator.changed(input.groupId);orchestrator.schedule(input.groupId);}
         else if(input.action==='requestChanges')result=orchestrator.requestChanges(input.groupId,input.requirementId,input);
         else if(input.action==='resolveDecision')result=orchestrator.resolveDecision(input.groupId,input.taskId,input);
         else if(input.action==='stop'){
@@ -460,7 +468,7 @@ const server = http.createServer(async (req, res) => {
         }
         else throw new Error('不支持的群组操作');
         broadcast({method:'omega/group-updated',params:{groupId:result.id}});
-        return json(res,200,{group:result});
+        return json(res,200,{group:input.view==='room'?groupRoomView(result):result});
       }
       if(url.pathname==='/api/models')return json(res,200,{models:await modelSettings.models(true)});
       if(url.pathname==='/api/thread-settings'){
@@ -575,7 +583,7 @@ const server = http.createServer(async (req, res) => {
         const workspaceConflict=reserveWorkspace(params.threadId,requestCwd,null);
         if(workspaceConflict)return json(res,409,{error:workspaceConflict.message});
         active.set(params.threadId, 'starting');
-        const imageIds = input.imageIds || [];
+        const imageIds = images.fromContent(turnInput).map(image=>image.id);
         pendingPastes.set(params.threadId,pasteRefs);
         pendingImages.set(params.threadId,imageIds);
         const requestedSettings=overrides.model?overrides:nativeSettings.get(params.threadId)||null;

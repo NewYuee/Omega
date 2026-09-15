@@ -28,6 +28,9 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run web:build
+      - name: Install browser for UI regression
+        run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
 
   android:
     name: Android Release APK (ARM64)

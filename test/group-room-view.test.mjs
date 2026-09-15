@@ -1,0 +1,4 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {groupRoomView} from '../src/server/group-room-view.ts';
+test('room projection bounds task payload without mutating persisted full results',()=>{const tasks=Array.from({length:1000},(_,i)=>({id:String(i),status:i===999?'awaiting_input':i<700?'completed':'queued',result:'r'.repeat(50000),objective:'o'.repeat(5000)}));const requirement={id:'q',tasks,delivery:'full delivery',plan:{summary:'分配说明',tasks}};const view=groupRoomView({requirements:[requirement],requirement,messages:[]});assert.equal(view.requirement.tasks.length,200);assert.equal(view.requirement.taskCount,1000);assert.equal(view.requirement.tasks[0].id,'999');assert.ok(view.requirement.tasksTruncated);assert.equal(view.requirement.tasks[0].result,undefined);assert.equal(view.requirement.tasks[0].objective,undefined);assert.equal(tasks[0].result.length,50000);assert.ok(JSON.stringify(view).length<50000);});

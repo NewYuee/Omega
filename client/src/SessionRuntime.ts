@@ -1,4 +1,5 @@
 import {appStore} from './AppState.js';
+import {imageSafeSlice} from '../../src/shared/inline-images.js';
 
 export interface SessionSnapshot{
   threadId:string|null;active:Record<string,string>;approvals:any[];
@@ -82,7 +83,7 @@ function createConversationDirectory(){
 const effortName=(value:unknown)=>({none:'无',minimal:'极低',low:'低',medium:'中',high:'高',xhigh:'极高',max:'最高',ultra:'超高'}[String(value)]||String(value||'默认'));
 function timelineItemText(item:any){
   if(item.pageText!==undefined)return item.pageText;
-  if(item.type==='userMessage')return(item.content||[]).map((value:any)=>value.text||(value.type==='image'?'[图片]':'')).join('\n');
+  if(item.type==='userMessage')return(item.content||[]).map((value:any)=>value.text||(value.type==='image'?'[图片]':'')).join(item.content?.some((value:any)=>value.text?.includes('[OmegaImage:'))?'':'\n');
   if(item.type==='agentMessage')return item.text||'';
   if(item.type==='commandExecution')return`$ ${item.command||''}\n${item.aggregatedOutput||''}\n${item.status||''}`;
   if(item.type==='fileChange')return(item.changes||[]).map((value:any)=>`${value.path}\n${value.diff||''}`).join('\n');
@@ -140,7 +141,7 @@ export function createTimeline(){
     setMetrics(metrics:any,receivedAt=Date.now()){turnMetrics=metrics;metricsReceivedAt=receivedAt},
     receiveMetrics(turnId:string,metrics:any){metricsRevision++;recentMetrics.delete(turnId);recentMetrics.set(turnId,{metrics,receivedAt:Date.now(),revision:metricsRevision});if(recentMetrics.size>8)recentMetrics.delete(recentMetrics.keys().next().value!);if(turnId===selectedTurn)this.setMetrics(metrics)},
     startTurn(turn:any){version++;clearItems();selectedTurn=turn.id;turnModel=turn.modelSettings||null;this.setMetrics(null)},
-    receiveItem(source:any){const text=timelineItemText(source),chat=['userMessage','agentMessage'].includes(source.type);items.set(source.id,{id:source.id,type:source.type,status:source.status,images:source.images||[],pageText:chat?text.slice(0,12000):'',totalLength:text.length,offset:0,deferred:!chat})},
+    receiveItem(source:any){const text=timelineItemText(source),chat=['userMessage','agentMessage'].includes(source.type);items.set(source.id,{id:source.id,type:source.type,status:source.status,images:source.images||[],inlineImages:text.includes('[OmegaImage:'),pageText:chat?imageSafeSlice(text,0,12000):'',totalLength:text.length,offset:0,deferred:!chat})},
     receiveAgentDelta(itemId:string,delta:string){const item=items.get(itemId)||{id:itemId,type:'agentMessage',text:''};if(item.pageText!==undefined){item.text=item.pageText;delete item.pageText}item.text=((item.text||'')+delta).slice(-12000);items.set(item.id,item)},
     receiveCommandDelta(itemId:string,delta:string){const item=items.get(itemId);if(!item)return false;item.aggregatedOutput=((item.aggregatedOutput||'')+delta).slice(-12000);return true},
   };

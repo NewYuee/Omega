@@ -24,7 +24,7 @@ createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line)
  else if(m.method==='thread/read'||m.method==='thread/resume')result={thread:threads.get(m.params.threadId),model:'test',reasoningEffort:'low'};
  else if(m.method==='turn/start'){
    const thread=threads.get(m.params.threadId),id='turn-'+(++starts),input=m.params.input?.[0]?.text||'';
-   let answer=input.includes('任务计划')?'':input.includes('审核成员')?'<omega-review>{"decision":"pass","summary":"验证证据充分"}</omega-review>':input.includes('最终交付报告')?'# 交付报告\\n功能已完成并测试。':'完成内容：实现成功。\\n验证：测试通过。';
+   if(thread.id===member&&!m.params.cwd){emit({id:m.id,error:{message:'member execution cwd was not forwarded'}});return;}\n   let answer=input.includes('任务计划')?'':input.includes('审核成员')?'<omega-review>{"decision":"pass","summary":"验证证据充分"}</omega-review>':input.includes('最终交付报告')?'# 交付报告\\n功能已完成并测试。':'完成内容：实现成功。\\n验证：测试通过。';
    if(input.includes('任务计划')){const match=input.match(/"id": "([^"]+)"/);answer='<omega-plan>'+JSON.stringify({summary:'实现并验证需求',tasks:[{memberId:match[1],title:'开发与测试',objective:'实现需求并执行测试',acceptance:'测试通过'}]})+'</omega-plan>';}
    const turn={id,status:'interrupted',items:[{id:'a-'+id,type:'agentMessage',text:answer}]};thread.turns.push(turn);emit({method:'turn/started',params:{threadId:thread.id,turn:{id,status:'inProgress'}}});result={turn:{id}};
    setTimeout(()=>{turn.status='completed';emit({method:'turn/completed',params:{threadId:thread.id,turn:{...turn}}});},20);

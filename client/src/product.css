@@ -28,3 +28,20 @@
 @media(max-width:700px){.pasted-content-token{max-width:calc(100vw - 78px)}.pasted-preview-backdrop{padding:8px}.pasted-preview{max-height:88dvh;border-radius:12px}.pasted-preview pre{padding:13px;font-size:12px}}
 .decision-close{color:#587066}
 .room-active.awaiting-decision::before{background:#b18422;box-shadow:0 0 0 4px #f2e5bd;animation:none}
+.collaboration-options{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:12px}.collaboration-options label{display:flex;gap:6px;align-items:center}.collaboration-options select{width:auto;min-width:76px;padding:5px 24px 5px 8px}
+.collaboration-options input[type=number]{width:84px;min-width:84px;padding:5px 8px}
+.inline-image-token{display:inline-flex;vertical-align:middle;align-items:center;gap:6px;max-width:180px;padding:4px 7px;margin:2px 4px;border:1px solid currentColor;border-radius:8px;cursor:pointer;font-size:12px;line-height:1.4;white-space:nowrap;user-select:all}
+.inline-image-token img{width:46px;height:36px;object-fit:cover;border-radius:4px;pointer-events:none}
+.inline-image-token [data-action="remove"]{padding:3px;cursor:pointer;user-select:none}
+.inline-image-label{overflow:hidden;text-overflow:ellipsis}
+.ordered-user-content{white-space:pre-wrap}
+.ordered-user-content .history-image{display:inline-block;vertical-align:middle;margin:4px}
+.thread-sort{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;padding:4px 0 10px;flex-shrink:0}
+.thread-sort select{max-width:145px;min-width:0;padding:5px 8px;font:inherit;color:inherit;background:transparent;border:1px solid #526460;border-radius:7px}
+.thread-sort-help{font-size:11px;opacity:.7;margin-bottom:8px}
+.thread-move{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:24px}
+.thread-move span{cursor:grab;font-size:12px}
+#threads .thread-move button{padding:0;min-height:22px;width:24px;border:0;background:transparent;color:inherit;line-height:1}
+#threads .thread-move button:disabled{opacity:.25}
+#threads .thread-row:has(.thread-move) .thread-open{padding-left:4px}
+#threads .thread-row:has(.thread-move) .thread-open::before{display:none}

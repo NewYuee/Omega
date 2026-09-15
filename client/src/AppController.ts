@@ -101,7 +101,7 @@ function applyReadState(state:JsonRecord){conversations.applyReadState(state);fo
 async function syncReadState(){applyReadState(await api('read-state'));}
 async function markThreadRead(id:string|null){if(!id)return;conversations.markRead(id);renderThreadSidebar();try{applyReadState(await api<JsonRecord>('read-state',{scope:'thread',id}));}catch{}}
 function renderComposer(){
-  const current=session.snapshot;window.omegaReactComposer?.render({sending,enabled:!!current.threadId,active:!!current.active[current.threadId!],attachmentsReady:attachments.ready,attachments:attachments.records,workspace:current.composerWorkspace||current.serverWorkspace},{submit:sendMessage,stop:stopMessage,addFiles:(files:File[])=>attachments.ingest(files),removeAttachment:(index:number)=>attachments.remove(index),openModelSettings:()=>preferences.open(),report:(message:string)=>error(message),...pastedText});
+  const current=session.snapshot;window.omegaReactComposer?.render({sending,enabled:!!current.threadId,active:!!current.active[current.threadId!],attachmentsReady:attachments.ready,attachments:attachments.records,workspace:current.composerWorkspace||current.serverWorkspace},{submit:sendMessage,stop:stopMessage,addFiles:(files:File[])=>attachments.ingest(files),removeAttachment:(index:number)=>attachments.remove(index),removeImage:(key:string)=>attachments.removeKey(key),openModelSettings:()=>preferences.open(),report:(message:string)=>error(message),...pastedText});
 }
 function controls() { renderComposer();preferences.controls(); }
 window.addEventListener('omega:react-composer-ready',controls);

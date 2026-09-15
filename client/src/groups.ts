@@ -15,17 +15,18 @@ export function initGroups({api,rpc,pastedText,error,closeDrawer,openThread,getW
   const unreadGroupCounts=new Map<string,number>();
   const withUnread=(group:any)=>({...group,unread:unreadGroups.has(group.id),unreadCount:unreadGroupCounts.get(group.id)||0});
   let replyTo:any=null,sending=false,refreshTimer:ReturnType<typeof setTimeout>|null=null,refreshAgain=false;
-  const room=createGroupRoom({api,act,openThread,error,onSelect:(id:string)=>{requirementId=id;},onReply:(target:any)=>{replyTo=target;renderGroupComposer();window.omegaReactGroupComposer?.focus();},onDecision:openDecision,onCancel:cancelRequirement});
+  const room=createGroupRoom({api,act,openThread,error,onSelect:(id:string)=>{requirementId=id;},onReply:(target:any)=>{replyTo=target;renderGroupComposer();window.omegaReactGroupComposer?.focus();},onBudget:openBudget,onDecision:openDecision,onCancel:cancelRequirement});
   function renderGroupComposer(){window.omegaReactGroupComposer?.render({members:current?.members||[],sending,enabled:!!groupId&&!!current?.members?.length,replyTo},{submit:sendGroupMessage,cancelReply:()=>{replyTo=null;renderGroupComposer();},report:(message:string)=>error(message),...pastedText});}
   async function sendGroupMessage(message:RichPastePayload){
     const content=message.text;if(sending||!groupId||!content.trim())return false;
     const targetGroup=groupId,targetReply=replyTo;sending=true;error('');renderGroupComposer();
-    try{const result=await api('groups',{action:'submit',groupId:targetGroup,content:content.trim(),pasteIds:message.pasteIds,replyTaskId:targetReply?.taskId});if(groupId===targetGroup){current=result.group;if(replyTo===targetReply)replyTo=null;render();return true;}return false;}
+    try{const result=await api('groups',{view:'room',action:'submit',groupId:targetGroup,content:content.trim(),pasteIds:message.pasteIds,collaborationMode:message.collaborationMode,maxRounds:message.maxRounds,maxMinutes:message.maxMinutes,maxTokens:message.maxTokens,replyTaskId:targetReply?.taskId});if(groupId===targetGroup){current=result.group;if(replyTo===targetReply)replyTo=null;render();return true;}return false;}
     catch(cause){error(`发送失败：${errorMessage(cause)}`);return false;}
     finally{sending=false;renderGroupComposer();}
   }
-  async function openDecision(target:any){if(!target?.decision||acting)return;await openDialog('decision',{memberName:target.memberName,decision:target.decision,onSubmit:async(values:Record<string,unknown>)=>{const ok=await act({action:'resolveDecision',taskId:target.taskId,requirementId:target.requirementId,...values},'提交决定');if(!ok)throw Error('决定没有提交，请重试')}});}
-  async function cancelRequirement(target:any){if(acting||!groupId||!target?.id)return;acting=true;error('');renderGroupHeader();try{const response=await api('groups',{action:'cancel',groupId,requirementId:target.id});current=response.group;requirementId=target.id;sessionStorage.setItem('omega-requirement',target.id);render();await list();window.omegaReactGroupComposer?.refill({text:target.content,pastedTexts:target.pastedTexts||[]});}catch(cause){error(`取消发送失败：${errorMessage(cause)}`);}finally{acting=false;renderGroupHeader();}}
+  async function openBudget(target:any){await openDialog('budget',{requirement:target,onSubmit:async(values:Record<string,unknown>)=>{const ok=await act({action:'setBudget',requirementId:target.id,maxRounds:Number(values.maxRounds),maxMinutes:Number(values.maxMinutes),maxTokens:Number(values.maxTokens)},'调整预算');if(!ok)throw Error('预算未更新')}});}
+  async function openDecision(target:any){if(!target?.decision||acting)return;await openDialog('decision',{memberName:target.memberName,decision:target.decision,onSubmit:async(values:Record<string,unknown>)=>{const ok=await act({action:'resolveDecision',taskId:target.taskId,requirementId:target.requirementId,...values,decisionId:target.decision.id},'提交决定');if(!ok)throw Error('决定没有提交，请重试')}});}
+  async function cancelRequirement(target:any){if(acting||!groupId||!target?.id)return;acting=true;error('');renderGroupHeader();try{const response=await api('groups',{view:'room',action:'cancel',groupId,requirementId:target.id});current=response.group;requirementId=target.id;sessionStorage.setItem('omega-requirement',target.id);render();await list();window.omegaReactGroupComposer?.refill({text:target.content,pastedTexts:target.pastedTexts||[]});}catch(cause){error(`取消发送失败：${errorMessage(cause)}`);}finally{acting=false;renderGroupHeader();}}
   window.addEventListener('omega:react-group-composer-ready',renderGroupComposer);
   function renderGroupHeader(group:any=current){const layout=window.omegaReactGroupPanels?.getLayout()||{mobile:false,membersOpen:true,questionsOpen:true};window.omegaAppState?.patch({groupTitle:group?.name||'创建你的第一个协作群组',groupHeader:group?{status:group.status,statusLabel:label(group.status),description:group.description||'群组会话',availability:group.runningTasks?`${group.runningTasks} 位成员正在回复`:`${group.members.length} 位成员可用`,maxConcurrency:group.limits.maxConcurrency,...layout,disabled:acting,actions:{toggleMembers:()=>window.omegaReactGroupPanels?.toggle('members'),toggleQuestions:()=>window.omegaReactGroupPanels?.toggle('tasks'),setConcurrency:(value:number)=>act({action:'setConcurrency',maxConcurrency:value,requirementId},'调整并发数'),addMember:openMember,deleteGroup:deleteCurrentGroup}}:null});}
 
@@ -49,12 +50,12 @@ export function initGroups({api,rpc,pastedText,error,closeDrawer,openThread,getW
       const groups=await list();
       if(groupId&&!groups.some((group:any)=>group.id===groupId))groupId=groups[0]?.id||null;
       if(!groupId){current=null;renderEmpty();return;}
-      const params=new URLSearchParams();if(requirementId)params.set('requirementId',requirementId);
+      const params=new URLSearchParams({view:'room'});if(requirementId)params.set('requirementId',requirementId);
       if(current?.id===groupId&&current.messageKeys)params.set('known',current.messageKeys.join(','));
-      const response=await api('groups/'+encodeURIComponent(groupId)+'?'+params);
+      const targetGroup=groupId;const response=await api('groups/'+encodeURIComponent(targetGroup)+'?'+params);if(groupId!==targetGroup){refreshAgain=true;return;}
       if(response.messageIds){const cache=new Map<string,any>([...(current?.id===groupId?current.messages:[])||[],...response.group.messages].map((message:any)=>[message.id,message]));response.group.messages=response.messageIds.map((id:string)=>cache.get(id)).filter(Boolean);response.group.messageKeys=response.messageKeys;}
       current=response.group;
-      if(!current.requirement&&requirementId){requirementId=null;sessionStorage.removeItem('omega-requirement');current=(await api('groups/'+encodeURIComponent(groupId))).group;}render();
+      if(!current.requirement&&requirementId){requirementId=null;sessionStorage.removeItem('omega-requirement');current=(await api('groups/'+encodeURIComponent(groupId)+'?view=room')).group;}render();
       if(unreadGroups.has(groupId)&&!document.hidden){unreadGroups.delete(groupId);unreadGroupCounts.delete(groupId);await markRead?.('group',groupId);}
     }finally{loading=false;if(refreshAgain){refreshAgain=false;setTimeout(()=>refresh().catch(cause=>error(errorMessage(cause))),150);}}
   }
@@ -76,7 +77,7 @@ export function initGroups({api,rpc,pastedText,error,closeDrawer,openThread,getW
 
   async function act(input:Record<string,unknown>,labelText:string){
     if(acting||!groupId)return;acting=true;error('');renderGroupHeader();
-    try{current=(await api('groups',{...input,groupId})).group;if(current.requirement){requirementId=current.requirement.id;sessionStorage.setItem('omega-requirement',current.requirement.id);}render();await list();return true;}
+    try{current=(await api('groups',{view:'room',...input,groupId})).group;if(current.requirement){requirementId=current.requirement.id;sessionStorage.setItem('omega-requirement',current.requirement.id);}render();await list();return true;}
     catch(cause){error(`${labelText}失败：${errorMessage(cause)}`);return false;}finally{acting=false;renderGroupHeader();}
   }
 
@@ -84,7 +85,7 @@ export function initGroups({api,rpc,pastedText,error,closeDrawer,openThread,getW
     if(acting||!current)return;
     if(!confirm(`删除群组“${current.name}”？\n\n群组需求、任务和协作记录会被删除，专用协调者会话也会删除；成员会话和项目文件会保留。`))return;
     acting=true;error('');renderGroupHeader();
-    try{await api('groups',{action:'deleteGroup',groupId:current.id});groupId=null;requirementId=null;current=null;sessionStorage.removeItem('omega-group');sessionStorage.removeItem('omega-requirement');await refresh();}
+    try{await api('groups',{view:'room',action:'deleteGroup',groupId:current.id});groupId=null;requirementId=null;current=null;sessionStorage.removeItem('omega-group');sessionStorage.removeItem('omega-requirement');await refresh();}
     catch(cause){error(`删除群组失败：${errorMessage(cause)}`);}
     finally{acting=false;renderGroupHeader();}
   }
@@ -99,6 +100,6 @@ export function initGroups({api,rpc,pastedText,error,closeDrawer,openThread,getW
 
   async function openMemberEdit(member:any){if(!current)return;try{const result=await rpc('thread/list',{limit:100,sourceKinds:[]}),bound=new Set<string>(current.members.filter((item:any)=>item.id!==member.id).map((item:any)=>item.threadId)),available=result.data.filter((thread:any)=>thread.id!==current.coordinatorThreadId&&!bound.has(thread.id));if(!available.some((thread:any)=>thread.id===member.threadId))available.unshift({id:member.threadId,name:'当前会话不可用',cwd:member.cwd});await openDialog('member',{editing:true,member,threads:available,onSubmit:(values:Record<string,unknown>)=>act({action:'updateMember',memberId:member.id,requirementId:current?.requirement?.id,...values},'修改成员').then(ok=>{if(!ok)throw Error('修改成员失败')})});}catch(cause){error(`读取可用会话失败：${errorMessage(cause)}`);}}
 
-  const newGroup=()=>openDialog('createGroup',{cwd:getWorkspace(),onSubmit:async(values:Record<string,unknown>)=>{const response=await api('groups',{action:'create',...values});current=response.group;groupId=current.id;sessionStorage.setItem('omega-group',current.id);render();await list();}}).catch(cause=>error(errorMessage(cause)));
+  const newGroup=()=>openDialog('createGroup',{cwd:getWorkspace(),onSubmit:async(values:Record<string,unknown>)=>{const response=await api('groups',{view:'room',action:'create',...values});current=response.group;groupId=current.id;sessionStorage.setItem('omega-group',current.id);render();await list();}}).catch(cause=>error(errorMessage(cause)));
   return {switchMode,newGroup,refresh,applyReadState:(state:any)=>{unreadGroups.clear();unreadGroupCounts.clear();for(const id of state?.unread?.groups||[]){unreadGroups.add(id);unreadGroupCounts.set(id,state?.counts?.groups?.[id]||1);}if(listedGroups.length)window.omegaReactWorkspace?.renderGroups(listedGroups.map(withUnread),groupId,{open:select,status:label});},onReadState:(params:any)=>{if(params.scope==='group'){unreadGroups.delete(params.id);unreadGroupCounts.delete(params.id);if(listedGroups.length)window.omegaReactWorkspace?.renderGroups(listedGroups.map(withUnread),groupId,{open:select,status:label});}},onUnread:(params:any)=>{if(params.scope==='group'){unreadGroups.add(params.id);unreadGroupCounts.set(params.id,params.count||1);if(listedGroups.length)window.omegaReactWorkspace?.renderGroups(listedGroups.map(withUnread),groupId,{open:select,status:label});}},onGroupUpdated:(id:string)=>{if(mode==='groups'&&(!groupId||id===groupId)&&!refreshTimer)refreshTimer=setTimeout(()=>{refreshTimer=null;refresh().catch(cause=>error(errorMessage(cause)));},200);},onGroupDeleted:(id:string)=>{unreadGroups.delete(id);unreadGroupCounts.delete(id);if(id===groupId){groupId=null;requirementId=null;current=null;sessionStorage.removeItem('omega-group');sessionStorage.removeItem('omega-requirement');}if(mode==='groups')setTimeout(()=>refresh().catch(cause=>error(errorMessage(cause))),loading?120:0);},isGroupMode:()=>mode==='groups'};
 }

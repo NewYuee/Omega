@@ -3,9 +3,9 @@ import {createRoot,type Root} from 'react-dom/client';
 import {RichPasteEditor,type RichPasteEditorHandle,type RichPastePayload} from './RichPasteEditor.js';
 import type {PastedTextTransport} from './pasted-content.js';
 
-interface Attachment{index:number;name:string;status:string;url:string;ready:boolean}
+interface Attachment{key:string;id?:string;index:number;name:string;status:string;url:string;ready:boolean}
 interface Model{sending:boolean;enabled:boolean;active:boolean;attachmentsReady:boolean;attachments:Attachment[];workspace:string}
-interface Actions extends PastedTextTransport{submit(value:RichPastePayload):Promise<boolean>;stop():Promise<void>|void;addFiles(files:File[]):void;removeAttachment(index:number):void;openModelSettings():void;report(message:string):void}
+interface Actions extends PastedTextTransport{submit(value:RichPastePayload):Promise<boolean>;stop():Promise<void>|void;addFiles(files:File[]):string[];removeImage(key:string):void;removeAttachment(index:number):void;openModelSettings():void;report(message:string):void}
 
 function Icon({kind}:{kind:'image'|'expand'|'sliders'|'send'}){
   const paths={image:'M3 3h18v18H3ZM3 17l6-6 4 4 3-3 5 5M7 7h.01',expand:'M14 3h7v7M21 3l-7 7M10 21H3v-7M3 21l7-7',sliders:'M4 7h7m4 0h5M4 17h3m4 0h9M11 4v6M7 14v6',send:'m3 3 18 9-18 9 3-9-3-9ZM6 12h15'};
@@ -24,16 +24,13 @@ function Composer({model,actions}:{model:Model;actions:Actions}){
   useEffect(()=>{if(!expanded)return;const key=(event:KeyboardEvent)=>{if(event.key==='Escape'){event.preventDefault();setExpanded(false)}};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key)},[expanded]);
   useEffect(()=>{const form=document.getElementById('composer');if(!form)return;const over=(event:DragEvent)=>{if(Array.from(event.dataTransfer?.types||[]).includes('Files')){event.preventDefault();setDragging(true)}};const leave=(event:DragEvent)=>{if(!form.contains(event.relatedTarget as Node))setDragging(false)};const drop=(event:DragEvent)=>{event.preventDefault();setDragging(false);ingest(Array.from(event.dataTransfer?.files||[]))};form.addEventListener('dragover',over);form.addEventListener('dragleave',leave);form.addEventListener('drop',drop);return()=>{form.removeEventListener('dragover',over);form.removeEventListener('dragleave',leave);form.removeEventListener('drop',drop)}},[locked]);
   const submit=async()=>{const value=prompt.current?.payload()||{text:'',pasteIds:[]};if(locked||uploadingPaste||!model.enabled||!model.attachmentsReady||(!value.text&&!model.attachments.length))return;try{if(await actions.submit(value)){prompt.current?.clear();setDraft('');setExpanded(false)}}catch(error){actions.report(error instanceof Error?error.message:String(error))}};
-  const ingest=(files:File[])=>{if(files.length&&!locked)actions.addFiles(files)};
+  const ingest=(files:File[])=>{if(files.length&&!locked){const keys=actions.addFiles(files);prompt.current?.insertImages(keys)}};
   return <>
     <div className="editor-heading"><h2>专注编辑</h2><button id="editor-close" type="button" className="secondary" onClick={()=>setExpanded(false)}>收起编辑</button></div>
-    <div id="image-tray" aria-live="polite" hidden={!model.attachments.length}>{model.attachments.map(item=><div className="image-pending" key={`${item.index}:${item.name}`}>
-      {item.url&&<img src={item.url} alt={item.name}/>}<span title={item.name}>{item.status}</span><button type="button" disabled={locked} aria-label={`移除图片 ${item.name}`} onClick={()=>actions.removeAttachment(item.index)}>移除</button>
-    </div>)}</div>
     <input ref={picker} id="image-files" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden onChange={event=>{ingest(Array.from(event.target.files||[]));event.target.value=''}}/>
-    <RichPasteEditor ref={prompt} id="prompt" label="消息" placeholder="今天想推进什么？" disabled={locked} transport={actions} report={actions.report} onFiles={ingest} onEnter={()=>void submit()} onChange={state=>{setDraft(state.text);setUploadingPaste(state.uploading)}}/>
+    <RichPasteEditor ref={prompt} id="prompt" label="消息" placeholder="今天想推进什么？" disabled={locked} transport={actions} report={actions.report} images={model.attachments} onRemoveImage={actions.removeImage} onFiles={ingest} onEnter={()=>void submit()} onChange={state=>{setDraft(state.text);setUploadingPaste(state.uploading)}}/>
     <div className="compose-footer">
-      <button type="button" id="add-image" disabled={locked||model.attachments.length>=4} title="选择图片，也可以粘贴截图或拖拽图片" onClick={()=>picker.current?.click()}><Icon kind="image"/>图片</button>
+      <button type="button" id="add-image" disabled={locked||model.attachments.length>=4} title="选择图片，也可以粘贴截图或拖拽图片" onMouseDown={event=>{event.preventDefault();prompt.current?.saveSelection()}} onClick={()=>picker.current?.click()}><Icon kind="image"/>图片</button>
       <button type="button" id="expand-editor" className="icon-button" aria-label="全屏编辑" title="全屏编辑" onClick={()=>{setExpanded(true);requestAnimationFrame(()=>prompt.current?.focus())}}><Icon kind="expand"/></button>
       <button type="button" id="model-settings" className="icon-button" title="模型设置" aria-label="模型设置" disabled={!model.enabled||model.sending} onClick={actions.openModelSettings}><Icon kind="sliders"/></button>
       <span id="workspace">{model.workspace||'连接你的工作空间'}</span>

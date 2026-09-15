@@ -24,7 +24,7 @@ test('member decisions are structured and resume the same member task after the 
   const parsed=parseMemberDecision(decisionText);assert.equal(parsed.options[0].recommended,true);assert.equal(stripMemberDecision(decisionText),'需要你选择实现方式。');
   const store=new GroupStore(':memory:');let group=store.createGroup({name:'决策组'},'coord','/workspace');group=store.addMember(group.id,{threadId:'owner',name:'负责人',role:'开发',cwd:'/project'});const requirement=store.createRequirement(group.id,{content:'实现音色功能'}).requirement;store.setPlan(requirement.id,'执行',[{memberId:group.members[0].id,title:'实现音色',objective:'实现功能'}],null,'');store.confirmPlan(group.id,requirement.id);const task=store.getRequirement(requirement.id).tasks[0];store.startTask(task.id,'first',null);store.recordTaskDecision(task.id,'需要你选择实现方式。','turn-1',parsed);
   let waiting=store.getRequirement(requirement.id);assert.equal(waiting.status,'running');assert.equal(waiting.tasks[0].status,'awaiting_input');assert.equal(waiting.tasks[0].decision.status,'pending');
-  store.resolveDecision(group.id,task.id,{choiceId:'preview',note:'先做最小方案'});const resumed=store.getRequirement(requirement.id);assert.equal(resumed.tasks[0].status,'queued');assert.equal(resumed.tasks[0].decision.answer.label,'生成预览音频');assert.match(memberTaskPrompt(group,resumed,group.members[0],resumed.tasks[0]),/用户已经作出决定：生成预览音频/);assert.match(memberTaskPrompt(group,resumed,group.members[0],resumed.tasks[0]),/先做最小方案/);store.close();
+  store.resolveDecision(group.id,task.id,{decisionId:store.getTask(task.id).decision.id,choiceId:'preview',note:'先做最小方案'});const resumed=store.getRequirement(requirement.id);assert.equal(resumed.tasks[0].status,'queued');assert.equal(resumed.tasks[0].decision.answer.label,'生成预览音频');assert.match(memberTaskPrompt(group,resumed,group.members[0],resumed.tasks[0]),/用户已经作出决定：生成预览音频/);assert.match(memberTaskPrompt(group,resumed,group.members[0],resumed.tasks[0]),/先做最小方案/);store.close();
 });
 
 test('cancelling a dispatched task keeps the requirement cancelled when its interrupted turn settles',async()=>{
@@ -188,6 +188,6 @@ test('restart recovery keeps an interrupted turn paused for explicit retry',asyn
   const orchestrator=new GroupOrchestrator({store,isThreadActive:()=>false,notify:()=>{},startTurn:async()=>{throw Error('不应重发')},waitTurn:async()=>({status:'interrupted'}),readTurnText:async()=>''});
   await orchestrator.resume();
   const paused=store.getRequirement(requirement.id);
-  assert.equal(paused.status,'paused');assert.equal(paused.tasks[0].status,'unknown');assert.match(paused.error,/interrupted/);
+  assert.equal(paused.status,'paused');assert.equal(paused.tasks[0].status,'failed');assert.match(paused.error,/interrupted/);
   store.close();
 });

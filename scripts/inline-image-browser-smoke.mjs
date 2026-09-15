@@ -1,0 +1,18 @@
+import {chromium} from '@playwright/test';
+import {build} from 'esbuild';
+import {access} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',executablePath=process.env.OMEGA_TEST_CHROME||await access(chrome).then(()=>chrome,()=>undefined);
+const bundle=await build({stdin:{contents:"import {installComposer} from './client/src/Composer.tsx';installComposer();",resolveDir:new URL('..',import.meta.url).pathname},bundle:true,write:false,format:'iife',define:{'process.env.NODE_ENV':'"production"'}});
+const browser=await chromium.launch({headless:true,...(executablePath?{executablePath}:{})});
+try{for(const width of [390,1280]){const page=await browser.newPage({viewport:{width,height:850}});const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.setContent('<form id="composer"></form>');await page.addScriptTag({content:bundle.outputFiles[0].text});
+ await page.evaluate(()=>{let records=[],sequence=0;window.sent=[];const render=()=>window.omegaReactComposer.render({enabled:true,sending:false,active:false,workspace:'/work',attachmentsReady:records.every(r=>r.ready),attachments:[...records]},actions);const actions={upload:async()=>({}),read:async()=>'',submit:async payload=>{window.sent.push(payload);records=[];render();return true},stop(){},removeAttachment(){},removeImage:key=>{records=records.filter(r=>r.key!==key);render()},report:message=>{throw Error(message)},openModelSettings(){},addFiles:files=>{const keys=[];for(const file of files){const key='image-'+(++sequence);keys.push(key);records.push({key,index:records.length,name:file.name,status:'上传中…',url:'',ready:false});setTimeout(()=>{const record=records.find(r=>r.key===key);if(!record)return;Object.assign(record,{id:'test-'+key,url:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jT1sAAAAASUVORK5CYII=',status:'已就绪',ready:true});render()},300)}render();return keys}};render();});
+ const editor=page.locator('#prompt');await editor.fill('前面后面');await editor.press('Home');await editor.press('ArrowRight');await editor.press('ArrowRight');
+ await editor.evaluate(node=>{const data=new DataTransfer();data.items.add(new File(['mock'],'图.png',{type:'image/png'}));node.dispatchEvent(new ClipboardEvent('paste',{clipboardData:data,bubbles:true,cancelable:true}));});
+ await page.keyboard.insertText('补充');await page.waitForFunction(()=>document.querySelector('.inline-image-label')?.textContent==='图片');
+ assert.equal(await page.locator('#image-tray').count(),0);assert.equal(await page.locator('.inline-image-token').count(),1);
+ await page.locator('.inline-image-token').click();await page.getByRole('dialog',{name:'图片预览'}).waitFor();await page.getByRole('button',{name:'关闭',exact:true}).click();
+ await page.locator('#expand-editor').click();assert.ok(await page.locator('body').evaluate(n=>n.classList.contains('composer-expanded')));await page.locator('#editor-close').click();
+ await page.locator('#send').click();assert.equal(await page.evaluate(()=>window.sent[0].text),'前面[OmegaImage:test-image-1]补充后面');
+ await editor.fill('保留文字');await page.locator('#image-files').setInputFiles({name:'second.png',mimeType:'image/png',buffer:Buffer.from('mock')});await page.locator('.inline-image-token').waitFor();await page.locator('.inline-image-token [data-action="remove"]').click();await page.waitForTimeout(400);assert.equal(await page.locator('.inline-image-token').count(),0);assert.equal(await editor.textContent(),'保留文字');assert.deepEqual(errors,[]);await page.close();console.log(`PASS ${width}px inline image insertion, text order, async upload, preview, fullscreen and deletion`);
+}}finally{await browser.close()}

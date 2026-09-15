@@ -16,6 +16,7 @@
     "service:uninstall": "node scripts/service-manager.mjs uninstall",
     "service:status": "node scripts/service-manager.mjs status",
     "test": "node --test",
+    "test:browser": "npm run web:build && node scripts/group-browser-smoke.mjs && node scripts/inline-image-browser-smoke.mjs",
     "test:performance": "node performance-smoke.mjs",
     "typecheck": "tsc",
     "web:build": "node client/build.mjs",
