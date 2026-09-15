@@ -7,11 +7,7 @@ interface Attachment{key:string;id?:string;index:number;name:string;status:strin
 interface Model{sending:boolean;enabled:boolean;active:boolean;attachmentsReady:boolean;attachments:Attachment[];workspace:string}
 interface Actions extends PastedTextTransport{submit(value:RichPastePayload):Promise<boolean>;stop():Promise<void>|void;addFiles(files:File[]):string[];removeImage(key:string):void;removeAttachment(index:number):void;openModelSettings():void;report(message:string):void}
 
-function Icon({kind}:{kind:'image'|'expand'|'sliders'|'send'}){
-  const paths={image:'M3 3h18v18H3ZM3 17l6-6 4 4 3-3 5 5M7 7h.01',expand:'M14 3h7v7M21 3l-7 7M10 21H3v-7M3 21l7-7',sliders:'M4 7h7m4 0h5M4 17h3m4 0h9M11 4v6M7 14v6',send:'m3 3 18 9-18 9 3-9-3-9ZM6 12h15'};
-  return <svg className="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={paths[kind]}/></svg>;
-}
-
+import {ComposerIcon as Icon} from './ComposerIcon.js';
 function Composer({model,actions}:{model:Model;actions:Actions}){
   const [draft,setDraft]=useState('');
   const [uploadingPaste,setUploadingPaste]=useState(false);

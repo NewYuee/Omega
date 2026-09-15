@@ -45,3 +45,28 @@
 #threads .thread-move button:disabled{opacity:.25}
 #threads .thread-row:has(.thread-move) .thread-open{padding-left:4px}
 #threads .thread-row:has(.thread-move) .thread-open::before{display:none}
+.group-composer-toolbar{position:relative;flex:0 0 auto;min-width:0}
+#requirement-form>.group-composer-toolbar{justify-content:flex-start;gap:8px;margin-top:4px}
+#requirement-form .group-composer-toolbar>select{width:112px;min-width:0;height:28px;min-height:28px;padding:2px 22px 2px 7px;border:1px solid #b6c8be;border-radius:7px;background:#edf3ef;color:#324d42;font-size:11px}
+.group-budget-menu{position:static;flex:0 0 auto;font-size:11px}
+.group-budget-menu>summary{display:flex;align-items:center;min-height:28px;cursor:pointer;list-style:none;white-space:nowrap;color:#547268}
+.group-budget-menu>summary::-webkit-details-marker{display:none}
+.group-budget-popover{position:absolute;z-index:90;bottom:calc(100% + 8px);left:0;width:min(320px,100%);max-height:55dvh;overflow:auto;box-sizing:border-box;padding:14px;border:1px solid #b6c8be;border-radius:12px;background:#f6faf7;color:#324d42;box-shadow:0 8px 28px #0003}
+.group-budget-popover label{width:100%;justify-content:space-between}
+.group-budget-popover small{line-height:1.5}
+#requirement-form .group-composer-hint{margin-left:auto}
+#requirement-form .group-composer-toolbar #submit-requirement{margin-left:auto;min-height:32px;padding:5px 12px;flex:0 0 auto}
+body.omega-product #requirement-form .group-composer-toolbar>select,body.omega-product .group-budget-popover{background:#252d26;color:#dce5db;border-color:#435147;color-scheme:dark}
+body.omega-product .group-budget-menu>summary{color:#9db5a7}
+@media(max-width:600px){#requirement-form>.group-composer-toolbar{gap:6px}#requirement-form .group-composer-hint{display:none}#requirement-form .group-composer-toolbar>.group-expand{padding:4px!important;font-size:10px}#requirement-form .group-composer-toolbar>select{width:100px}.group-budget-menu{font-size:10px}#requirement-form .group-composer-toolbar #submit-requirement{padding:5px 10px;font-size:12px}#requirement-form .group-composer-toolbar #submit-requirement .ui-icon{display:none}}
+.group-mode-menu{position:static;flex:0 0 auto}
+#requirement-form .group-composer-toolbar .icon-button{display:inline-flex;align-items:center;justify-content:center;position:relative;box-sizing:border-box;width:36px;height:34px;min-height:34px!important;padding:7px!important;border:0;border-radius:8px;background:transparent!important;color:#547268;cursor:pointer;list-style:none}
+#requirement-form .group-composer-toolbar .icon-button::-webkit-details-marker{display:none}
+#requirement-form .group-composer-toolbar .icon-button:hover,#requirement-form .group-composer-toolbar details[open]>.icon-button{background:#78998722!important}
+#requirement-form .group-composer-toolbar .icon-button:focus-visible{outline:2px solid #6aab8c;outline-offset:2px}
+#requirement-form .group-composer-toolbar .icon-button[data-active=true]:after{content:'';position:absolute;right:4px;top:4px;width:5px;height:5px;border-radius:50%;background:#6bc8a1}
+#requirement-form .group-composer-toolbar .ui-icon{display:block!important;width:18px;height:18px}
+#requirement-form .group-composer-hint{margin-left:6px}
+body.omega-product #requirement-form .group-composer-toolbar .icon-button{color:#8da99a}
+.group-composer-toolbar>.group-mode-menu,.group-composer-toolbar>.group-budget-menu{height:34px;line-height:1}
+#requirement-form .group-composer-toolbar #submit-requirement{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:34px;white-space:nowrap}
