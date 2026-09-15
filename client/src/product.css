@@ -71,3 +71,8 @@ body.omega-product #requirement-form .group-composer-toolbar .icon-button{color:
 .group-composer-toolbar>.group-mode-menu,.group-composer-toolbar>.group-budget-menu{height:34px;line-height:1}
 #requirement-form .group-composer-toolbar #submit-requirement{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:34px;white-space:nowrap}
 #requirement-form input[type="file"][hidden]{display:none!important}
+.copy-reply{position:relative;padding-bottom:32px!important}
+.copy-reply>.copy-message{position:absolute;right:4px;bottom:2px;display:inline-flex;align-items:center;justify-content:center;width:32px;height:30px;min-height:30px;padding:6px;border:0;border-radius:7px;background:transparent;color:#78978a;cursor:pointer;opacity:1;transition:opacity .15s,background .15s}
+.copy-message:hover{background:#78998722}.copy-message:focus-visible{outline:2px solid #6aab8c;outline-offset:2px}.copy-message[data-state=success]{color:#54aa81}.copy-message[data-state=error]{color:#c66f60}.copy-message .ui-icon{width:17px;height:17px}.copy-status{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@media(hover:hover) and (pointer:fine){.copy-reply>.copy-message[data-state=idle]{opacity:0}.message:hover .copy-message,.group-message:hover .copy-message,.copy-reply:focus-within>.copy-message[data-state=idle]{opacity:1}}
+@media(pointer:coarse){.copy-reply{padding-bottom:42px!important}.copy-reply>.copy-message{width:40px;height:40px}}
