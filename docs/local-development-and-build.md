@@ -3,7 +3,7 @@
 本文是 Omega v0.2 的本地开发、长期运行和多端打包操作手册。所有命令默认从仓库根目录执行。
 
 ```sh
-cd /Users/newyue/Lab/omega
+cd /path/to/Omega
 ```
 
 ## 1. 环境准备
@@ -46,7 +46,7 @@ http://127.0.0.1:4310
 cat .omega/access-token
 ```
 
-停止服务按 `Ctrl+C`。默认工作空间是 Omega 仓库的父目录，即 `/Users/newyue/Lab`。
+停止服务按 `Ctrl+C`。默认工作空间是 Omega 仓库的父目录；可通过 `OMEGA_WORKSPACE` 显式指定项目根目录。
 
 ### 本地开发循环
 
@@ -102,8 +102,8 @@ npm run service:uninstall
 ```sh
 PORT=4310 \
 OMEGA_HOST=127.0.0.1 \
-OMEGA_WORKSPACE=/Users/newyue/Lab \
-OMEGA_STATE_DIR=/Users/newyue/Lab/omega/.omega \
+OMEGA_WORKSPACE=/path/to/projects \
+OMEGA_STATE_DIR=/path/to/Omega/.omega \
 OMEGA_CODEX_BIN=codex \
 OMEGA_ACCESS_TOKEN='至少8个字符' \
 npm start
