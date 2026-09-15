@@ -1,6 +1,7 @@
 {
   "name": "omega",
   "version": "0.2.0",
+  "license": "Apache-2.0",
   "private": true,
   "type": "module",
   "main": "desktop-dist/main.cjs",
@@ -46,7 +47,7 @@
     "appId": "com.omega.workspace.desktop",
     "productName": "Omega",
     "directories": {"output": "release"},
-    "files": ["desktop-dist/**", "package.json"],
+    "files": ["desktop-dist/**", "package.json", "LICENSE", "NOTICE"],
     "mac": {"target": ["dmg", "zip"], "category": "public.app-category.productivity"},
     "win": {"target": ["nsis"]},
     "nsis": {"oneClick": false, "allowToChangeInstallationDirectory": true}
