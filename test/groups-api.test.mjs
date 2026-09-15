@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import sharp from 'sharp';
 
 test('group API creates coordinator, binds existing session and completes confirmed workflow',async()=>{
   const state=await mkdtemp(join(tmpdir(),'omega-groups-api-')),fake=join(state,'codex.mjs'),port=14327;
@@ -23,7 +24,8 @@ createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line)
  else if(m.method==='thread/items/list'){const turns=threads.get(m.params.threadId)?.turns||[],turn=turns.find(turn=>turn.id===m.params.turnId);result={data:[...(turn?.items||[])].reverse().map(item=>({turnId:turn.id,item})),nextCursor:null,backwardsCursor:null};}
  else if(m.method==='thread/read'||m.method==='thread/resume')result={thread:threads.get(m.params.threadId),model:'test',reasoningEffort:'low'};
  else if(m.method==='turn/start'){
-   const thread=threads.get(m.params.threadId),id='turn-'+(++starts),input=m.params.input?.[0]?.text||'';
+   const thread=threads.get(m.params.threadId),id='turn-'+(++starts),input=(m.params.input||[]).map(part=>part.text||'').join('');
+   if(!m.params.input.some(part=>part.type==='localImage')){emit({id:m.id,error:{message:'group image was not forwarded'}});return;}
    if(thread.id===member&&!m.params.cwd){emit({id:m.id,error:{message:'member execution cwd was not forwarded'}});return;}\n   let answer=input.includes('任务计划')?'':input.includes('审核成员')?'<omega-review>{"decision":"pass","summary":"验证证据充分"}</omega-review>':input.includes('最终交付报告')?'# 交付报告\\n功能已完成并测试。':'完成内容：实现成功。\\n验证：测试通过。';
    if(input.includes('任务计划')){const match=input.match(/"id": "([^"]+)"/);answer='<omega-plan>'+JSON.stringify({summary:'实现并验证需求',tasks:[{memberId:match[1],title:'开发与测试',objective:'实现需求并执行测试',acceptance:'测试通过'}]})+'</omega-plan>';}
    const turn={id,status:'interrupted',items:[{id:'a-'+id,type:'agentMessage',text:answer}]};thread.turns.push(turn);emit({method:'turn/started',params:{threadId:thread.id,turn:{id,status:'inProgress'}}});result={turn:{id}};
@@ -44,7 +46,11 @@ createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line)
     const memberCwd=group.members[0].cwd;
     group=(await call({action:'updateMember',groupId:group.id,memberId:group.members[0].id,name:'主开发',role:'开发负责人',projectName:'Omega',responsibilities:'实现并自测',operations:'工作区内修改',skills:'Node.js'})).group;
     assert.equal(group.members[0].name,'主开发');assert.equal(group.members[0].threadId,'11111111-1111-4111-8111-111111111111');assert.equal(group.members[0].cwd,memberCwd);
-    group=(await call({action:'submit',groupId:group.id,content:'实现一个功能',acceptance:'测试通过'})).group;
+    const upload=await fetch(`http://127.0.0.1:${port}/api/images`,{method:'POST',headers:{authorization:'Bearer group-api-test-key','content-type':'image/png'},body:await sharp({create:{width:2,height:2,channels:3,background:'#ffffff'}}).png().toBuffer()});
+    assert.ok(upload.ok);const image=await upload.json();
+    group=(await call({action:'submit',groupId:group.id,content:`实现一个功能 [OmegaImage:${image.id}] 参考此图`,imageIds:[image.id],acceptance:'测试通过'})).group;
+    assert.equal(group.requirement.images[0].id,image.id);
+    assert.ok(group.messages.some(m=>m.reference?.images?.[0]?.id===image.id));
     for(let i=0;i<50&&group.requirement.status==='plan_drafting';i++){await new Promise(r=>setTimeout(r,20));group=(await call(null,'groups/'+group.id)).group;}
     assert.notEqual(group.requirement.status,'awaiting_confirmation');assert.equal(group.requirement.tasks.length,1);
     for(let i=0;i<80&&group.requirement.status!=='completed';i++){await new Promise(r=>setTimeout(r,20));group=(await call(null,'groups/'+group.id)).group;}

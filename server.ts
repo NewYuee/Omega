@@ -191,6 +191,7 @@ async function startManagedTurn(threadId:string,text:string,submissionId:string,
   if (active.has(threadId)) throw Object.assign(new Error('该会话正在处理其他任务'), { status: 409 });
   if (ledger[submissionId]?.result) return ledger[submissionId].result;
   if (ledger[submissionId]) throw Object.assign(new Error('该派发在服务重启前结果未知，请先核对会话'), { status: 409 });
+  const managedInput=await images.turnInput([{type:'text',text}],execution.imageIds||[]);
   const savedSettings=await modelSettings.read(threadId);
   const overrides:Row=await modelSettings.resolve(savedSettings,false);
   const requestedSettings=overrides.model?overrides:nativeSettings.get(threadId)||null;
@@ -198,11 +199,12 @@ async function startManagedTurn(threadId:string,text:string,submissionId:string,
   const binding=groups.threadBinding(threadId),taskCwd=execution.cwd||thread.thread?.cwd,taskMode=execution.accessMode==='read'?'read':'write',conflict=binding?.type==='coordinator'?null:reserveWorkspace(threadId,taskCwd,binding?.groupId||null,taskMode);
   if(conflict)throw Object.assign(new Error(conflict.message),{status:409});
   active.set(threadId,'starting'); if(requestedSettings)pendingModels.set(threadId,requestedSettings);
-  ledger[submissionId]={fingerprint:JSON.stringify({threadId,text}),createdAt:Date.now(),threadId,modelSettings:requestedSettings,managed:true};
+  ledger[submissionId]={fingerprint:JSON.stringify({threadId,text}),createdAt:Date.now(),threadId,imageIds:images.fromContent(managedInput).map(image=>image.id),modelSettings:requestedSettings,managed:true};
   try {
     await saveLedger();
-    const result:Row=await bridge.request('turn/start',{threadId,input:[{type:'text',text}],clientUserMessageId:submissionId,...overrides,...(execution.cwd?{cwd:execution.cwd}:{})});
+    const result:Row=await bridge.request('turn/start',{threadId,input:managedInput,clientUserMessageId:submissionId,...overrides,...(execution.cwd?{cwd:execution.cwd}:{})});
     ledger[submissionId].result=result;
+    if(result.turn?.id&&execution.imageIds?.length)turnImages.set(threadId+':'+result.turn.id,images.fromContent(managedInput).map(image=>image.id));
     if(result.turn?.id&&active.get(threadId)==='starting')active.set(threadId,result.turn.id);
     if(requestedSettings&&result.turn?.id){nativeSettings.set(threadId,requestedSettings);turnSettings.set(threadId+':'+result.turn.id,requestedSettings);}
     await saveLedger(); return result;
@@ -443,7 +445,7 @@ const server = http.createServer(async (req, res) => {
         }
         else if(input.action==='setBudget'){result=groups.extendBudget(input.groupId,input.requirementId,input);orchestrator.changed(input.groupId);orchestrator.schedule(input.groupId);}
         else if(input.action==='setConcurrency'){result=groups.setConcurrency(input.groupId,input.maxConcurrency,input.requirementId);orchestrator.schedule(input.groupId);}
-        else if(input.action==='submit'){input.pasteRefs=await pastedTexts.refs(input.pasteIds||[]);result=orchestrator.submit(input.groupId,input);}
+        else if(input.action==='submit'){await images.turnInput([{type:'text',text:input.content||''}],input.imageIds||[]);input.imageRefs=(input.imageIds||[]).map((id:string)=>imageInfo(id));input.pasteRefs=await pastedTexts.refs(input.pasteIds||[]);result=orchestrator.submit(input.groupId,input);}
         else if(input.action==='updateTask')result=groups.updateDraftTask(input.groupId,input.requirementId,input);
         else if(input.action==='confirm')result=orchestrator.confirm(input.groupId,input.requirementId);
         else if(input.action==='retry')result=await orchestrator.retry(input.groupId,input.requirementId);

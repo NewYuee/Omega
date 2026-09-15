@@ -70,3 +70,4 @@ body.omega-product .group-budget-menu>summary{color:#9db5a7}
 body.omega-product #requirement-form .group-composer-toolbar .icon-button{color:#8da99a}
 .group-composer-toolbar>.group-mode-menu,.group-composer-toolbar>.group-budget-menu{height:34px;line-height:1}
 #requirement-form .group-composer-toolbar #submit-requirement{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:34px;white-space:nowrap}
+#requirement-form input[type="file"][hidden]{display:none!important}
