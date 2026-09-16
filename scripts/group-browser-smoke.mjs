@@ -11,7 +11,7 @@ try{for(const width of [390,1280]){
   await page.addInitScript(()=>{sessionStorage.setItem('omega-key','browser-test-key');Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{window.copiedText=text}},configurable:true});const original=window.fetch;window.fetch=(url,options)=>String(url).includes('/api/events')?Promise.resolve(new Response(new ReadableStream({start(){}}))):original(url,options);});
   const stamp=new Date().toISOString(),member={id:'m',threadId:'thread',name:'开发',role:'开发',cwd:'/work/project',responsibilities:'开发项目'};
   const group=()=>({id:'g',name:'浏览器回归',status:'running',members:[member],limits:{maxConcurrency:4},requirements:[{id:'q',content:'检查项目',status:'running',tasks:[{id:'t',memberId:'m',status:'running'}],createdAt:stamp}],messages:Array.from({length:120},(_,i)=>({id:'msg'+i,requirementId:'q',author:i===118?'你':'开发',kind:i===118?'user':'member',content:'# 结果 '+i+'\n\n'+('正文内容。'.repeat(1000)),createdAt:stamp,reference:i===118?undefined:{taskId:'t',threadId:'thread',...(i===119?{type:'progress'}:{})}})),runningTasks:1});
-  await page.route('**/*',async route=>{const url=new URL(route.request().url());if(url.pathname.startsWith('/api/images/'))return route.fulfill({body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jT1sAAAAASUVORK5CYII=','base64'),contentType:'image/png'});if(url.pathname==='/api/images')return route.fulfill({json:{id:'group-image-1',expiresAt:Date.now()+86400000}});if(url.pathname.startsWith('/api/')){let json={data:[],active:{},approvals:[]};if(url.pathname==='/api/status')json={...json,ready:true,workspace:'/work',devices:1};else if(url.pathname==='/api/groups'&&route.request().method()==='GET')json={groups:[{id:'g',name:'浏览器回归',status:'running',memberCount:1}]};else if(url.pathname.startsWith('/api/groups')){if(route.request().method()==='POST')sent.push(route.request().postDataJSON());json=url.searchParams.has('before')?{messages:group().messages.map((m,i)=>({...m,id:'old'+i}))}:{group:group()};}return route.fulfill({json});}const name=url.pathname==='/'?'index.html':url.pathname.slice(1);if(name.includes('..'))return route.abort();try{const body=await readFile(new URL('../web-dist/'+name,import.meta.url));return route.fulfill({body,contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''})}});
+  await page.route('**/*',async route=>{const url=new URL(route.request().url());if(url.pathname.startsWith('/api/images/'))return route.fulfill({body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jT1sAAAAASUVORK5CYII=','base64'),contentType:'image/png'});if(url.pathname==='/api/images')return route.fulfill({json:{id:'group-image-1',expiresAt:Date.now()+86400000}});if(url.pathname.startsWith('/api/')){let json={data:[],active:{},approvals:[]};if(url.pathname==='/api/automations')json={automations:Array.from({length:15},(_,i)=>({id:'auto'+i,name:'定时检查 '+i,prompt:'检查服务运行情况',enabled:true,schedule:{kind:'interval',minutes:60},lastStatus:'idle',nextRunAt:null,lastRunAt:null}))};else if(url.pathname==='/api/status')json={...json,ready:true,workspace:'/work',devices:1};else if(url.pathname==='/api/groups'&&route.request().method()==='GET')json={groups:[{id:'g',name:'浏览器回归',status:'running',memberCount:1}]};else if(url.pathname.startsWith('/api/groups')){if(route.request().method()==='POST')sent.push(route.request().postDataJSON());json=url.searchParams.has('before')?{messages:group().messages.map((m,i)=>({...m,id:'old'+i}))}:{group:group()};}return route.fulfill({json});}const name=url.pathname==='/'?'index.html':url.pathname.slice(1);if(name.includes('..'))return route.abort();try{const body=await readFile(new URL('../web-dist/'+name,import.meta.url));return route.fulfill({body,contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''})}});
   await page.goto('http://omega.test/');
   await page.waitForLoadState('networkidle');
   await page.waitForFunction(()=>typeof window.omegaAppState?.getSnapshot()?.shellActions?.switchMode==='function');
@@ -26,7 +26,7 @@ try{for(const width of [390,1280]){
   await page.evaluate(()=>window.omegaAppState.getSnapshot().shellActions.switchMode('groups'));
   await page.locator('[data-message-id="msg119"]').waitFor();
   const toolbar=page.locator('.group-composer-toolbar');
-  assert.equal(await page.locator('#requirement-form input[type=file]').isVisible(),false,'native upload input must remain hidden');
+  for(const input of await page.locator('#requirement-form input[type=file]').all())assert.equal(await input.isVisible(),false,'native upload inputs must remain hidden');
   assert.equal(await toolbar.locator('[aria-label="协作模式"]').count(),1);
   await toolbar.getByLabel('执行模式',{exact:true}).click();
   await toolbar.getByLabel('协作模式',{exact:true}).selectOption('handoff');
@@ -56,6 +56,49 @@ try{for(const width of [390,1280]){
   await editor.press('End');await editor.press('ArrowRight');await page.keyboard.insertText('图片之后');await editor.press('Enter');
   await page.waitForFunction(()=>document.querySelector('#group-prompt')?.textContent==='');
   assert.deepEqual(sent.at(-1).imageIds,['group-image-1']);assert.match(sent.at(-1).content,/图片之前\[OmegaImage:group-image-1\]图片之后/);
+  if(width<700)await page.locator('#menu-toggle').click();
+  await page.locator('#open-control-center').click();
+  const center=page.getByRole('dialog',{name:'工作控制中心',exact:true});
+  await center.waitFor();
+  const navigation=center.locator('nav[aria-label="控制中心分类"]');
+  assert.ok((await navigation.boundingBox()).height<=56,'control navigation must remain a compact single row');
+  const tabRects=await navigation.locator('button').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().top));
+  assert.ok(tabRects.every(top=>Math.abs(top-tabRects[0])<2),'control tabs must be horizontal');
+  await center.getByRole('button',{name:'电脑与浏览器',exact:true}).click();
+  assert.ok((await center.locator('.omega-center-body').boundingBox()).height>(await center.boundingBox()).height*0.65,'content must receive most of the dialog height');
+  assert.equal(await center.locator('.omega-center-form label').first().evaluate(n=>getComputedStyle(n).marginTop),'0px');
+  await page.route('**/api/integrations',route=>route.fulfill({json:{apps:{ok:true,data:{data:[{id:'a',name:'Sites',description:'Build websites',isEnabled:true,isAccessible:true}]}},installed:{ok:true,data:{apps:[]}},mcp:{ok:true,data:{data:[{name:'Browser MCP',tools:{take_screenshot:{}}}]}},plugins:{ok:true,data:{marketplaces:[{name:'Official',plugins:[{id:'p',name:'Designer',installed:false,enabled:false}]}]}}}}));
+  await center.getByRole('button',{name:'连接与插件',exact:true}).click();
+  await center.locator('.omega-integrations article').first().waitFor();
+  const search=center.getByRole('searchbox');
+  for(const [query,name] of [['WEBSITES','Sites'],['screenshot','Browser MCP'],['designer','Designer']]){
+    await search.fill(query);assert.equal(await center.locator('.omega-integrations article').count(),1);
+    assert.equal(await center.locator('.omega-integrations article strong').textContent(),name);
+  }
+  await search.fill('no-matching-integration');assert.equal(await center.locator('.omega-integrations article').count(),0);
+  await center.getByRole('button',{name:'清空',exact:true}).click();assert.equal(await center.locator('.omega-integrations article').count(),3);
+  await page.route('**/api/health',route=>route.fulfill({json:{status:'healthy',version:'0.2.0',startedAt:new Date().toISOString(),uptimeSeconds:60,memory:{rss:1024,heapUsed:512},bridge:{ready:true,pendingRequests:0,pendingApprovals:0},devices:1,activeTurns:0,pendingRestore:false,supervised:true}}));
+  await center.getByRole('button',{name:'系统与备份',exact:true}).click();
+  assert.equal(await center.locator('input[type=file]').isVisible(),false);
+  const chooser=page.waitForEvent('filechooser');await center.getByRole('button',{name:'选择备份恢复',exact:true}).click();await chooser;
+  const refreshHeight=(await center.getByRole('button',{name:'刷新',exact:true}).boundingBox()).height;
+  for(const button of await center.locator('.omega-system-actions button').all())assert.ok(Math.abs((await button.boundingBox()).height-refreshHeight)<=3,'system actions should match refresh size');
+  const close=center.getByRole('button',{name:'关闭',exact:true});
+  const closeBox=await close.boundingBox(),svgBox=await close.locator('svg').boundingBox();
+  assert.ok(Math.abs(closeBox.x+closeBox.width/2-svgBox.x-svgBox.width/2)<1);
+  assert.ok(Math.abs(closeBox.y+closeBox.height/2-svgBox.y-svgBox.height/2)<1);
+  await center.getByRole('button',{name:'自动化',exact:true}).click();
+  await page.locator('.omega-center-list article').first().waitFor();
+  assert.equal(await page.locator('.omega-center-grid form').count(),0);
+  const scroll=await page.locator('.omega-center-body').evaluate(n=>({height:n.clientHeight,total:n.scrollHeight,width:n.clientWidth,contentWidth:n.scrollWidth}));
+  assert.ok(scroll.height>200&&scroll.total>scroll.height,'task list must scroll inside center');
+  assert.ok(scroll.contentWidth<=scroll.width+1,'no horizontal overflow');
+  await center.getByRole('button',{name:'＋ 新建自动化'}).click();
+  await center.getByRole('textbox',{name:'名称',exact:true}).fill('草稿');
+  await center.getByRole('button',{name:'收起',exact:true}).click();
+  await center.getByRole('button',{name:'＋ 新建自动化'}).click();
+  assert.equal(await center.getByRole('textbox',{name:'名称',exact:true}).inputValue(),'草稿');
+  await page.keyboard.press('Escape');await center.waitFor({state:'hidden'});
   assert.deepEqual(errors,[]);await page.close();
   console.log(`PASS ${width}px: bounded Markdown, lazy progress, Enter/Shift+Enter, fullscreen and member panel`);
 }}finally{await browser.close();}

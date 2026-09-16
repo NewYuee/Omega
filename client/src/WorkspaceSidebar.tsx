@@ -58,5 +58,5 @@ function WorkspaceSidebar(){const state=useAppState(),group=state.mode==='groups
   <button id={group?'new-group':'new'} type="button" onClick={()=>actions?.newAction()}>＋ {group?'新建群组':'新建会话'}</button>
   <div className="caption">{group?'协作空间':'你的工作'}</div>
   <nav id={group?'groups':'threads'} data-react-owned="true" aria-label={group?'群组列表':'会话列表'}>{group?<Groups/>:<Threads/>}</nav>
-  <footer><span id="connection" className={state.connected?'connected':''}><i className="connection-light" aria-hidden/>{state.connectionLabel}</span><button id="settings" type="button" onClick={()=>actions?.openSettings()}>连接设置</button></footer>
+  <footer><span id="connection" className={state.connected?'connected':''}><i className="connection-light" aria-hidden/>{state.connectionLabel}</span><button id="open-control-center" type="button" onClick={()=>{setDrawerOpen(false);window.dispatchEvent(new Event('omega:open-control-center'));}}>工作控制中心</button><button id="settings" type="button" onClick={()=>actions?.openSettings()}>连接设置</button></footer>
   </>}

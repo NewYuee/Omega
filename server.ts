@@ -8,6 +8,7 @@ import { Bridge } from './src/server/bridge.ts';
 import { historyPage, paginatedHistoryPage } from './src/server/history.ts';
 import { ImageStore, imageInfo, MAX_IMAGE_BYTES } from './src/server/images.ts';
 import {PastedTextStore,MAX_PASTED_TEXT_BYTES} from './src/server/pasted-content.ts';
+import {importDocument,MAX_DOCUMENT_BYTES} from './src/server/document-import.ts';
 import { TurnMetrics } from './src/server/metrics.ts';
 import { ModelSettings } from './src/server/model-settings.ts';
 import {groupRoomView} from './src/server/group-room-view.ts';
@@ -294,6 +295,11 @@ const server = http.createServer(async (req, res) => {
         if(!String(req.headers['content-type']||'').toLowerCase().startsWith('text/plain'))return json(res,415,{error:'仅支持纯文本粘贴内容'});
         if(Number(req.headers['content-length'])>MAX_PASTED_TEXT_BYTES)return json(res,413,{error:'单段粘贴文本不得超过 512 KB'});
         return json(res,201,await pastedTexts.upload(await rawBody(req,MAX_PASTED_TEXT_BYTES)));
+      }
+      if(url.pathname==='/api/documents'&&req.method==='POST'){
+        if(Number(req.headers['content-length'])>MAX_DOCUMENT_BYTES)return json(res,413,{error:'文档不得超过 10 MB'});
+        const text=await importDocument(url.searchParams.get('name')||'',()=>rawBody(req,MAX_DOCUMENT_BYTES));
+        return json(res,201,await pastedTexts.upload(Buffer.from(text)));
       }
       if(url.pathname==='/api/backup'&&req.method==='GET'){if(active.size||bridge.approvals.size)throw Object.assign(new Error('仍有任务执行或等待审批，暂不能创建一致性备份'),{status:409});const archive=createBackup(state),name=`omega-${new Date().toISOString().slice(0,10)}.omega-backup.gz`;res.writeHead(200,{'content-type':'application/gzip','content-disposition':`attachment; filename="${name}"`,'content-length':archive.length,'cache-control':'no-store'});return res.end(archive);}
       if(url.pathname==='/api/restore'&&req.method==='POST'){if(active.size||bridge.approvals.size)throw Object.assign(new Error('仍有任务执行或等待审批，暂不能恢复备份'),{status:409});return json(res,200,stageRestore(state,await rawBody(req)));}

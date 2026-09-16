@@ -2,6 +2,7 @@
   "name": "omega",
   "version": "0.2.0",
   "license": "Apache-2.0",
+  "overrides": {"officeparser": {"pdfjs-dist": "6.2.108"}},
   "private": true,
   "type": "module",
   "main": "desktop-dist/main.cjs",
@@ -17,7 +18,7 @@
     "service:uninstall": "node scripts/service-manager.mjs uninstall",
     "service:status": "node scripts/service-manager.mjs status",
     "test": "node --test",
-    "test:browser": "npm run web:build && node scripts/group-browser-smoke.mjs && node scripts/inline-image-browser-smoke.mjs",
+    "test:browser": "npm run web:build && node scripts/group-browser-smoke.mjs && node scripts/inline-image-browser-smoke.mjs && node scripts/text-file-browser-smoke.mjs",
     "test:performance": "node performance-smoke.mjs",
     "typecheck": "tsc",
     "web:build": "node client/build.mjs",
@@ -46,18 +47,40 @@
   "build": {
     "appId": "com.omega.workspace.desktop",
     "productName": "Omega",
-    "directories": {"output": "release"},
-    "files": ["desktop-dist/**", "package.json", "LICENSE", "NOTICE"],
-    "mac": {"target": ["dmg", "zip"], "category": "public.app-category.productivity"},
-    "win": {"target": ["nsis"]},
-    "nsis": {"oneClick": false, "allowToChangeInstallationDirectory": true}
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop-dist/**",
+      "package.json",
+      "LICENSE",
+      "NOTICE"
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-http": "^2.6.0",
     "@tauri-apps/plugin-opener": "^2.5.5",
     "dompurify": "^3.4.15",
+    "fflate": "0.8.3",
     "marked": "^18.0.12",
+    "officeparser": "7.8.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "sharp": "^0.35.4",

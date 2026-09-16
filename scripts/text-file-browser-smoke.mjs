@@ -1,0 +1,68 @@
+import {chromium} from '@playwright/test';
+import {build} from 'esbuild';
+import {access} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',executablePath=process.env.OMEGA_TEST_CHROME||await access(chrome).then(()=>chrome,()=>undefined);
+const bundle=await build({stdin:{contents:"import {installComposer} from './client/src/Composer.tsx';import {installGroupComposer} from './client/src/GroupComposer.tsx';installComposer();installGroupComposer();",resolveDir:new URL('..',import.meta.url).pathname},bundle:true,write:false,format:'iife',define:{'process.env.NODE_ENV':'"production"'}});
+const browser=await chromium.launch({headless:true,...(executablePath?{executablePath}:{})});
+try{for(const group of [false,true]){
+  const page=await browser.newPage(),errors=[];page.setDefaultTimeout(5000);page.on('pageerror',e=>errors.push(e.message));
+  await page.setContent(group?'<form id="requirement-form"></form>':'<form id="composer"></form>');
+  await page.addStyleTag({content:'.rich-paste-editor{white-space:pre-wrap}'});
+  await page.addScriptTag({content:bundle.outputFiles[0].text});
+  await page.evaluate(group=>{
+    window.sent=[];window.uploads=[];window.reports=[];
+    const actions={upload:async text=>{window.uploads.push(text);await new Promise(r=>setTimeout(r,100));return{id:'text-'+window.uploads.length,chars:[...text].length,bytes:new TextEncoder().encode(text).length,createdAt:Date.now(),expiresAt:Date.now()+86400000}},read:async()=>window.uploads[0],submit:async value=>{window.sent.push(value);return true},stop(){},addFiles(){return[]},removeImage(){},removeAttachment(){},openModelSettings(){},cancelReply(){},report:message=>window.reports.push(message)};
+    (group?window.omegaReactGroupComposer:window.omegaReactComposer).render({scope:'test',enabled:true,sending:false,active:false,attachmentsReady:true,attachments:[],workspace:'/work',members:[{id:'member-1',name:'dramaclaw-owner',role:'owner'}],replyTo:null},actions);
+  },group);
+  const editor=page.locator(group?'#group-prompt':'#prompt'),send=page.locator(group?'#submit-requirement':'#send'),picker=page.getByLabel('选择附件');
+  const plain=()=>editor.evaluate(node=>{const clone=node.cloneNode(true);for(const token of clone.querySelectorAll('[data-mention-id]'))token.replaceWith(document.createTextNode('@'+token.dataset.mentionName));return clone.textContent;});
+  if(group){
+    for(const input of ['@','@dra','@@@dramaclaw-owner']){
+      await editor.fill(input);await editor.press('End');await page.locator('.mention-option').click();
+      assert.equal(await plain(),'@dramaclaw-owner ');
+      assert.equal(await page.locator('.mention-menu').count(),0);
+      await editor.press('ArrowLeft');await editor.press('ArrowRight');
+      assert.equal(await page.locator('.mention-menu').count(),0);
+    }
+    await editor.fill('请处理 @dra 后面的文字');
+    await editor.evaluate(node=>{const range=document.createRange(),walker=document.createTreeWalker(node,NodeFilter.SHOW_TEXT);let offset=8,text;while((text=walker.nextNode())){if(offset<=text.length){range.setStart(text,offset);break;}offset-=text.length;}range.collapse(true);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);node.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));});
+    await page.locator('.mention-option').click();
+    assert.equal(await plain(),'请处理 @dramaclaw-owner  后面的文字');
+    await editor.fill('mail@example.com');await editor.press('End');assert.equal(await page.locator('.mention-menu').count(),0);
+    await editor.fill('@dra');await editor.press('End');await editor.press('Enter');
+    assert.equal(await page.locator('.mention-token').count(),1);
+    await editor.press('Backspace');await editor.press('Backspace');
+    assert.equal(await page.locator('.mention-token.is-selected').count(),1);
+    await editor.press('Backspace');assert.equal(await page.locator('.mention-token').count(),0);
+    await editor.fill('@dra');await editor.press('End');await page.locator('.mention-option').click();
+    await page.keyboard.insertText('检查');await send.click();
+    const mentionPayload=await page.evaluate(()=>window.sent.at(-1));
+    assert.equal(mentionPayload.mentions[0].id,'member-1');assert.equal(mentionPayload.text,'@dramaclaw-owner 检查');
+    await editor.press('ArrowUp');assert.equal(await page.locator('.mention-token').count(),1);
+    await page.locator('.mention-remove').click();assert.equal(await page.locator('.mention-token').count(),0);
+    await editor.fill('@dra');await editor.press('End');await page.locator('.mention-option').click();
+    await editor.evaluate(root=>{const token=root.querySelector('.mention-token');const line=document.createElement('div');line.append('第二行 ',token,' 检查');root.replaceChildren(document.createTextNode('第一行'),document.createElement('br'),line);root.dispatchEvent(new Event('input',{bubbles:true}));});
+    await send.click();
+    const multiline=await page.evaluate(()=>window.sent.at(-1));
+    assert.equal(multiline.text.slice(multiline.mentions[0].start,multiline.mentions[0].end),'@dramaclaw-owner');
+    await editor.press('ArrowUp');assert.equal(await page.locator('.mention-token').count(),1);
+    await editor.fill('[OmegaImage:old-image-id] @dra');await editor.press('End');await page.locator('.mention-option').click();await send.click();
+    await editor.press('ArrowUp');assert.equal(await page.locator('.mention-token').count(),1);
+    assert.match(await plain(),/\[图片需重新添加\] @dramaclaw-owner/);
+    await editor.fill('');
+    await page.evaluate(()=>{window.sent=[];window.reports=[];});
+    console.log('PASS mention replacement, duplicate @ recovery, menu dismissal and surrounding text');
+  }
+  await editor.fill('前后');await editor.evaluate(node=>{node.normalize();const range=document.createRange();range.setStart(node.firstChild,1);range.collapse(true);const selection=getSelection();selection.removeAllRanges();selection.addRange(range);node.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));});
+  await picker.setInputFiles({name:'demo.ts',mimeType:'text/plain',buffer:Buffer.from('const value = "你好";')});
+  await page.keyboard.insertText('补充');await page.waitForFunction(()=>document.querySelector('.pasted-content-status')?.textContent==='');
+  assert.equal(await page.locator('.pasted-content-name').textContent(),'demo.ts');
+  await page.locator('.pasted-content-name').click();await page.getByRole('dialog').waitFor();assert.match(await page.getByRole('dialog').textContent(),/const value/);await page.getByLabel('关闭预览').click();
+  await send.click();const sent=await page.evaluate(()=>window.sent[0]);assert.match(sent.text,/^前\[Pasted Content \d+ chars\]补充后$/);assert.equal(sent.pasteIds.length,1);
+  await editor.press('ArrowUp');assert.equal(await page.locator('.pasted-content-name').textContent(),'demo.ts');await page.locator('.pasted-content-remove').click();assert.equal(await editor.textContent(),'前补充后');
+  await picker.setInputFiles({name:'bad.zip',mimeType:'application/zip',buffer:Buffer.from('bad')});assert.equal(await page.locator('.pasted-content-token').count(),0);assert.equal(await page.evaluate(()=>window.reports.length),1);
+  await editor.evaluate(node=>{const data=new DataTransfer();data.items.add(new File(['# dropped'],'drop.md',{type:'text/plain'}));node.dispatchEvent(new DragEvent('drop',{dataTransfer:data,bubbles:true,cancelable:true}));});
+  await page.waitForFunction(()=>document.querySelector('.pasted-content-status')?.textContent==='');assert.equal(await page.locator('.pasted-content-name').textContent(),'drop.md');
+  assert.deepEqual(errors,[]);await page.close();console.log(`PASS ${group?'group':'single'} file insertion, preview, send, recall, removal, validation and drop`);
+}}finally{await browser.close()}

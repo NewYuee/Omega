@@ -277,6 +277,8 @@ body.group-mode main>header .header-title{flex-direction:column;align-items:flex
 .group-message.coordinator .chat-avatar{background:#235e4d}
 .group-message>div:first-child{margin-bottom:5px}.group-message>div:first-child strong{font-size:11px;color:#29715a}.group-message time{font-size:9px;color:#81968d;margin-left:16px}
 .group-message>.reference-link{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#668479!important;border-left:2px solid #8db7a5!important;padding:2px 6px!important;margin:2px 0 6px!important}
+.group-message-actions{display:flex;align-items:center;gap:12px;margin-top:6px}
+.group-message-actions>.reference-link{display:inline-flex;align-items:center;flex:none;white-space:nowrap;margin:0;color:#668479!important}
 .room-active{display:flex;align-items:center;gap:8px;width:max-content;max-width:88%;margin:2px 0 10px 38px;padding:8px 12px;border:1px solid #d5dfda;border-radius:14px 14px 14px 4px;background:rgba(255,255,255,.9);box-shadow:0 1px 3px #173d2912;color:#668077}
 .room-active::before{content:'';width:7px;height:7px;border-radius:50%;background:#4b9b7e;box-shadow:0 0 0 4px #dceee7;animation:omega-pulse 1.4s infinite}@keyframes omega-pulse{50%{box-shadow:0 0 0 7px transparent}}
 #requirement-form{background:rgba(255,255,255,.97);border-color:#c7d8d0;border-radius:18px;box-shadow:0 5px 24px #173d291a;backdrop-filter:blur(14px)}
