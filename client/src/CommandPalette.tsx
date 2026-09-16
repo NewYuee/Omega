@@ -1,5 +1,6 @@
 import {useEffect,useMemo,useRef,useState} from 'react';
 import {useAppState} from './AppState.js';
+import {PaletteTrigger} from './PaletteTrigger.js';
 
 type Command={id:string;label:string;hint:string;run:()=>void};
 type SearchResult={scope:'thread'|'group';id:string;anchor?:string|null;title:string;snippet:string};
@@ -27,7 +28,7 @@ export function CommandPalette(){
   },[app]);
   const remoteCommands:Command[]=remote.map((result,index)=>({id:`search:${result.scope}:${result.id}:${result.anchor||index}`,label:result.title,hint:`${result.scope==='thread'?'会话内容':'群组消息'} · ${result.snippet}`,run:()=>result.scope==='thread'?void window.omegaNavigation?.openThread(result.id,result.anchor):void app.groupActions?.open(result.id)}));
   const shown=[...commands.filter(command=>(command.label+' '+command.hint).toLowerCase().includes(query.trim().toLowerCase())),...remoteCommands].filter((command,index,array)=>array.findIndex(item=>item.id===command.id)===index).slice(0,40);
-  if(!open)return <button className="omega-palette-trigger" type="button" onClick={()=>setOpen(true)} title="搜索与命令 (⌘/Ctrl K)"><span>⌕</span><kbd>⌘K</kbd></button>;
+  if(!open)return <PaletteTrigger onOpen={()=>setOpen(true)}/>;
   const choose=(command:Command)=>{setOpen(false);command.run();};
   return <div className="omega-palette-backdrop" role="presentation" onMouseDown={event=>{if(event.target===event.currentTarget)setOpen(false);}}><section className="omega-palette" role="dialog" aria-modal="true" aria-label="搜索与命令"><div className="omega-palette-search"><span>⌕</span><input ref={input} value={query} onChange={event=>setQuery(event.target.value)} placeholder="搜索会话、群组、消息或命令" onKeyDown={event=>{if(event.key==='Enter'&&shown[0])choose(shown[0]);}}/><kbd>Esc</kbd></div><div className="omega-palette-results">{shown.map(command=><button key={command.id} type="button" onClick={()=>choose(command)}><span>{command.label}</span><small>{command.hint}</small></button>)}{searching&&<p>正在搜索消息…</p>}{!shown.length&&!searching&&<p>没有匹配结果</p>}</div></section></div>;
 }

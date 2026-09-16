@@ -5,5 +5,7 @@ import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url)),out=new URL('../web-dist/',import.meta.url);
 await mkdir(out,{recursive:true});await cp(new URL('../public/',import.meta.url),out,{recursive:true});await copyFile(new URL('./src/product.css',import.meta.url),new URL('omega-product.css',out));
 await build({absWorkingDir:path.resolve(root),entryPoints:['client/src/main.tsx'],outfile:'web-dist/omega-product.js',bundle:true,format:'esm',target:['safari15','chrome105'],minify:true});
-const indexPath=new URL('index.html',out),html=await readFile(indexPath,'utf8');await writeFile(indexPath,html.replace('</head>','<link rel="stylesheet" href="/omega-product.css"></head>').replace('/app.js','/omega-product.js'));
+await copyFile(new URL('./src/theme.css',import.meta.url),new URL('omega-theme.css',out));
+await build({absWorkingDir:path.resolve(root),entryPoints:['client/src/theme-bootstrap.ts'],outfile:'web-dist/omega-theme.js',bundle:true,format:'iife',target:['safari15','chrome105'],minify:true});
+const indexPath=new URL('index.html',out),html=await readFile(indexPath,'utf8');await writeFile(indexPath,html.replace('<head>','<head><script src="/omega-theme.js"></script>').replace('</head>','<link rel="stylesheet" href="/omega-product.css"><link rel="stylesheet" href="/omega-theme.css"></head>').replace('/app.js','/omega-product.js'));
 console.log('Omega React client built.');

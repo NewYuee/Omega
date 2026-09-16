@@ -9,6 +9,8 @@ await mkdir(output, { recursive: true });
 // Explicit allowlist: never package server data, keys, uploads or workspace files.
 for (const file of ['index.html','style.css']) await copyFile(path.join(root,'public',file), path.join(output,file));
 await copyFile(path.join(root,'client','src','product.css'),path.join(output,'omega-product.css'));
+await copyFile(path.join(root,'client','src','theme.css'),path.join(output,'omega-theme.css'));
+await build({absWorkingDir:root,entryPoints:['client/src/theme-bootstrap.ts'],outfile:'native-dist/omega-theme.js',bundle:true,format:'iife',target:['safari15','chrome105'],minify:true});
 await build({
   absWorkingDir:root, entryPoints:['native/entry.js'], outfile:'native-dist/app.js',
   bundle:true, format:'esm', target:['safari15','chrome105'], minify:true,
@@ -21,5 +23,5 @@ await build({
   }}]
 });
 const html = await readFile(path.join(output,'index.html'),'utf8');
-await writeFile(path.join(output,'index.html'),html.replace('initial-scale=1','initial-scale=1,viewport-fit=cover').replace('</head>','<link rel="stylesheet" href="/omega-product.css"></head>'));
+await writeFile(path.join(output,'index.html'),html.replace('<head>','<head><script src="/omega-theme.js"></script>').replace('initial-scale=1','initial-scale=1,viewport-fit=cover').replace('</head>','<link rel="stylesheet" href="/omega-product.css"><link rel="stylesheet" href="/omega-theme.css"></head>'));
 console.log('Mobile frontend bundled (local assets only).');

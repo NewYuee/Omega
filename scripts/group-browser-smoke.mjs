@@ -15,6 +15,21 @@ try{for(const width of [390,1280]){
   await page.goto('http://omega.test/');
   await page.waitForLoadState('networkidle');
   await page.waitForFunction(()=>typeof window.omegaAppState?.getSnapshot()?.shellActions?.switchMode==='function');
+  if(width===1280){
+    const trigger=page.locator('.omega-palette-trigger'),initial=await trigger.boundingBox();
+    await page.mouse.move(initial.x+initial.width/2,initial.y+initial.height/2);await page.mouse.down();
+    await page.mouse.move(500,250,{steps:8});await page.mouse.up();
+    assert.equal(await page.locator('.omega-palette-backdrop').count(),0,'drag must not open search');
+    const moved=await trigger.boundingBox();assert.ok(Math.abs(moved.x-initial.x)>100);
+    await page.reload();await trigger.waitFor();
+    const restored=await trigger.boundingBox();assert.ok(Math.abs(restored.x-moved.x)<1&&Math.abs(restored.y-moved.y)<1,'drag position survives reload');
+    await trigger.click();await page.locator('.omega-palette-backdrop').waitFor();await page.keyboard.press('Escape');
+    const start=await trigger.boundingBox();await page.mouse.move(start.x+10,start.y+10);await page.mouse.down();await page.mouse.move(1279,849,{steps:8});await page.mouse.up();
+    await page.setViewportSize({width:900,height:600});
+    await page.waitForFunction(()=>{const r=document.querySelector('.omega-palette-trigger').getBoundingClientRect();return r.right<=innerWidth&&r.bottom<=innerHeight;});
+    await trigger.focus();await page.keyboard.press('Enter');await page.locator('.omega-palette-backdrop').waitFor();await page.keyboard.press('Escape');
+    await page.setViewportSize({width,height:850});
+  }
   await page.evaluate(()=>window.omegaReactWorkspace.renderThreads([{id:'a',name:'Alpha',updatedAt:2},{id:'b',name:'Beta',updatedAt:1}],null,{open(){},rename(){},remove(){}}));
   await page.locator('[aria-label="会话排序"]').waitFor({state:'attached'});
   await page.locator('[aria-label="会话排序"]').evaluate(node=>{node.value='manual';node.dispatchEvent(new Event('change',{bubbles:true}));});
@@ -101,6 +116,38 @@ try{for(const width of [390,1280]){
   await page.locator('#open-control-center').click();
   const center=page.getByRole('dialog',{name:'工作控制中心',exact:true});
   await center.waitFor();
+  await center.getByRole('button',{name:'外观',exact:true}).click();
+  for(const mode of ['浅色','深色']){
+    await center.getByRole('radio',{name:mode,exact:true}).check();
+    assert.equal(await page.locator('html').getAttribute('data-theme'),mode==='浅色'?'light':'dark');
+    for(const [name,accent] of [['Omega 绿','green'],['蓝色','blue'],['紫色','purple'],['琥珀色','amber']]){
+      await center.getByRole('radio',{name,exact:true}).check();assert.equal(await page.locator('html').getAttribute('data-accent'),accent);
+      assert.equal(await center.locator('.appearance-panel').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
+      const contrasts=await page.evaluate(()=>{
+        const style=getComputedStyle(document.documentElement),value=name=>style.getPropertyValue(name).trim();
+        const luminance=hex=>{const rgb=hex.slice(1).match(/../g).map(n=>parseInt(n,16)/255).map(n=>n<=0.04045?n/12.92:((n+0.055)/1.055)**2.4);return rgb[0]*0.2126+rgb[1]*0.7152+rgb[2]*0.0722;};
+        const ratio=(a,b)=>{const x=luminance(a),y=luminance(b);return(Math.max(x,y)+0.05)/(Math.min(x,y)+0.05);};
+        return [ratio(value('--text'),value('--surface')),ratio(value('--muted'),value('--surface')),ratio(value('--accent-text'),value('--tint')),ratio('#ffffff',value('--accent'))];
+      });
+      assert.ok(contrasts.every(value=>value>=4.5),'theme text contrast must meet 4.5:1');
+      assert.equal(await center.locator('.appearance-warning').evaluate(node=>{
+        const actual=getComputedStyle(node).color;
+        const probe=document.createElement('span');probe.style.color='var(--warning)';node.append(probe);
+        const expected=getComputedStyle(probe).color;probe.remove();return actual===expected;
+      }),true,'warning color must not be overridden by muted text');
+      const tabs=await page.locator('.side-tabs').evaluate(node=>{
+        const selected=getComputedStyle(node.querySelector('[aria-selected="true"]')),idle=getComputedStyle(node.querySelector('[aria-selected="false"]'));
+        return{selectedBackground:selected.backgroundColor,idleBackground:idle.backgroundColor,selectedColor:selected.color,selectedWeight:selected.fontWeight};
+      });
+      assert.notEqual(tabs.selectedBackground,tabs.idleBackground,'workspace mode selection must be distinct in every theme');
+      assert.equal(tabs.selectedColor,'rgb(255, 255, 255)');assert.equal(tabs.selectedWeight,'700');
+    }
+  }
+  await page.emulateMedia({colorScheme:'light'});await center.getByRole('radio',{name:'跟随系统',exact:true}).check();
+  await page.waitForFunction(()=>document.documentElement.dataset.theme==='light');
+  await page.emulateMedia({colorScheme:'dark'});await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark');
+  await center.getByRole('radio',{name:'Omega 绿',exact:true}).check();
+  await center.getByRole('button',{name:'自动化',exact:true}).click();
   await center.getByRole('button',{name:'关闭',exact:true}).focus();await page.keyboard.press('a');
   await page.keyboard.press('Alt+ArrowRight');assert.equal(await page.locator('.keyboard-region').count(),0,'modal blocks region navigation');
   assert.equal(await editor.evaluate(node=>document.activeElement===node),false,'dialog must not yield focus to composer');
@@ -143,6 +190,9 @@ try{for(const width of [390,1280]){
   await center.getByRole('button',{name:'＋ 新建自动化'}).click();
   assert.equal(await center.getByRole('textbox',{name:'名称',exact:true}).inputValue(),'草稿');
   await page.keyboard.press('Escape');await center.waitFor({state:'hidden'});
+  await page.reload();await page.waitForLoadState('networkidle');
+  assert.equal(await page.locator('html').getAttribute('data-theme'),'dark');
+  assert.equal(await page.locator('html').getAttribute('data-accent'),'green');
   assert.deepEqual(errors,[]);await page.close();
   console.log(`PASS ${width}px: bounded Markdown, lazy progress, Enter/Shift+Enter, fullscreen and member panel`);
 }}finally{await browser.close();}
