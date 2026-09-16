@@ -10,7 +10,7 @@ function detail(request:ApprovalRequest){
   return String(params.command||params.reason||JSON.stringify(params,null,2));
 }
 
-function ApprovalCard({request,actions}:{request:ApprovalRequest;actions:Actions}){
+export function ApprovalCard({request,actions}:{request:ApprovalRequest;actions:Actions}){
   const questions=(request.params?.questions||[]) as Question[];
   const [answers,setAnswers]=useState<Record<string,string>>({});
   const [busy,setBusy]=useState(false);

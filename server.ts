@@ -1,4 +1,6 @@
 import {submissionLayout} from './src/server/submission-layout.ts';
+import {groupAttention} from './src/server/attention.ts';
+import {repositoryView} from './src/server/repository-view.ts';
 import {inlineImageContent} from './src/shared/inline-images.ts';
 import http from 'node:http';
 import { readFile, mkdir, writeFile, realpath, stat, rename } from 'node:fs/promises';
@@ -181,7 +183,7 @@ bridge.on('event',(event:Row)=>{
     items:event.params.turn.items.map((item:Row)=>publicItem(item,event.params.threadId,event.params.turn.id))}}};
   if (event.method === 'turn/completed') {
     active.delete(event.params.threadId); activeCwds.delete(event.params.threadId); pendingImages.delete(event.params.threadId); pendingModels.delete(event.params.threadId);
-    if(event.params.turn?.id)automationService?.complete(event.params.turn.id,event.params.turn.status==='completed',event.params.turn.error?.message);
+    if(event.params.turn?.id)automationService?.complete(event.params.turn.id,event.params.turn.status==='completed',event.params.turn.error?.message,event.params.turn.status==='interrupted');
     const binding=groups.threadBinding(event.params.threadId);if(binding)queueMicrotask(()=>orchestrator.schedule(binding.groupId));
   }
   if(event.method==='item/completed')indexSearchItem(event.params?.item,event.params?.threadId,event.params?.turnId);
@@ -258,7 +260,7 @@ orchestrator=new GroupOrchestrator({store:groups,startTurn:startManagedTurn,wait
     for(const entry of activeCwds.values())if(modesConflict(accessMode,entry.accessMode)&&pathsOverlap(cwd,entry.cwd))return true;
     return false;
   },notify:broadcast});
-automationService=new AutomationService(automationStore,startManagedTurn,id=>active.has(id),broadcast);
+automationService=new AutomationService(automationStore,async(threadId,text,submissionId,execution)=>{try{return await startManagedTurn(threadId,text,submissionId,execution)}catch(error){if(!ledger[submissionId]&&error instanceof Error)Object.assign(error,{definiteNotStarted:true});throw error;}},id=>active.has(id),broadcast);
 ready.then(()=>orchestrator.resume()).catch(()=>{});
 ready.then(()=>automationService.start()).catch(()=>{});
 const allowed = new Set(['thread/delete', 'thread/name/set', 'thread/list', 'thread/read', 'thread/resume', 'thread/turns/list', 'thread/items/list', 'thread/start', 'turn/start', 'turn/interrupt', 'account/read', 'model/list', 'app/list', 'app/installed', 'app/read', 'plugin/list', 'plugin/read', 'plugin/install', 'plugin/uninstall', 'mcpServerStatus/list', 'mcpServer/oauth/login', 'config/mcpServer/reload']);
@@ -345,7 +347,16 @@ const server = http.createServer(async (req, res) => {
         const names=(listed.data||[]).filter((thread:Row)=>`${thread.name||''} ${thread.preview||''}`.toLowerCase().includes(needle)).slice(0,20).map((thread:Row)=>({scope:'thread',id:thread.id,anchor:null,title:thread.name||thread.preview||'新会话',snippet:thread.preview||thread.cwd||'',updatedAt:thread.updatedAt||null}));
         const indexed=searchStore.search(query,40),groupResults=groups.searchMessages(query,40),seen=new Set<string>(),results=[];for(const item of [...names,...indexed,...groupResults].sort((a:any,b:any)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')))){const key=`${item.scope}:${item.id}:${item.anchor||''}`;if(seen.has(key))continue;seen.add(key);results.push(item);if(results.length>=60)break;}return json(res,200,{query,results});
       }
+      if(url.pathname==='/api/attention'&&req.method==='GET'){
+        const offset=Math.floor(Math.max(0,Math.min(100000,Number(url.searchParams.get('offset'))||0))),limit=url.searchParams.get('summary')==='1'?0:30;
+        const approvals=[...bridge.approvals.values()].map(request=>({id:`approval:${request.id}`,kind:'approval',request}));
+        const page=groupAttention(groups,Math.max(0,offset-approvals.length),Math.max(0,limit-Math.max(0,approvals.length-offset)));
+        const visible=[...approvals.slice(offset,offset+limit),...page.items].slice(0,limit);
+        const autos=automationStore.attention(Math.max(0,offset-approvals.length-page.total),limit-visible.length);
+        return json(res,200,{total:approvals.length+page.total+autos.total,items:[...visible,...autos.items]});
+      }
       if (url.pathname === '/api/automations' && req.method === 'GET') return json(res,200,{automations:automationStore.list()});
+      if(url.pathname==='/api/automation-runs'&&req.method==='GET')return json(res,200,automationStore.runs(url.searchParams.get('id')||'',Number(url.searchParams.get('before'))||Number.MAX_SAFE_INTEGER));
       if (url.pathname === '/api/groups' && req.method === 'GET') return json(res,200,{groups:groups.listGroups()});
       if (url.pathname.startsWith('/api/groups/') && req.method === 'GET') {
         const id=decodeURIComponent(url.pathname.slice('/api/groups/'.length));
@@ -385,12 +396,29 @@ const server = http.createServer(async (req, res) => {
       await ready;
       if (!bridge.ready) throw new Error('App Server disconnected; restart Omega.');
       const input = await body(req);
+      if(url.pathname==='/api/repository'){
+        if(typeof input.threadId!=='string'||!input.threadId)throw new Error('请选择会话');
+        const result=freshThreads.get(input.threadId)||await bridge.request('thread/read',{threadId:input.threadId,includeTurns:false});
+        if(!result.thread?.cwd)throw new Error('会话没有工作目录');
+        return json(res,200,await repositoryView(result.thread.cwd,{scope:input.scope,file:input.file,offset:input.offset}));
+      }
       if(url.pathname==='/api/automations'){
         let result;
+        if(input.expectedRunId&&['reconcile','cancelWaiting'].includes(input.action)&&automationStore.latestRun(input.id)?.id!==input.expectedRunId)return json(res,409,{error:'运行记录已变化，请刷新后操作。'});
         if(input.action==='create'){await bridge.request('thread/read',{threadId:input.threadId,includeTurns:false});result=automationStore.create(input);}
         else if(input.action==='update'){if(input.threadId)await bridge.request('thread/read',{threadId:input.threadId,includeTurns:false});result=automationStore.update(input.id,input);}
         else if(input.action==='delete')result=automationStore.remove(input.id);
         else if(input.action==='run')result=await automationService.run(automationStore.get(input.id),true);
+        else if(input.action==='reconcile'){
+          let item=automationStore.get(input.id);const run=automationStore.latestRun(item.id),recorded=run&&ledger[`automation:${item.id}:${run.id}`]?.result?.turn?.id;
+          if(item.lastStatus==='unknown'&&!item.lastTurnId&&recorded)item=automationStore.setTurn(item.id,recorded);
+          if(item.lastStatus!=='unknown'||!item.lastTurnId)throw Object.assign(new Error('没有可核对的原轮次，请打开目标会话检查；不会自动重发。'),{status:409});
+          const listed=await bridge.request('thread/turns/list',{threadId:item.threadId,limit:100,sortDirection:'desc',itemsView:'summary'});
+          const turn=listed.data?.find((t:Row)=>t.id===item.lastTurnId);
+          if(!turn||!['completed','failed','interrupted'].includes(turn.status))throw Object.assign(new Error('原轮次未找到或尚未结束，继续保持待核对，不重发。'),{status:409});
+          automationService.complete(turn.id,turn.status==='completed',turn.error?.message,turn.status==='interrupted');result=automationStore.get(item.id);
+        }
+        else if(input.action==='cancelWaiting'){const item=automationStore.get(input.id);if(item.lastStatus!=='waiting')throw Object.assign(new Error('排队已结束，请刷新'),{status:409});automationStore.cancelWaiting(item.id);result=automationStore.get(item.id);}
         else throw new Error('不支持的自动化操作');
         return json(res,200,result);
       }
@@ -405,6 +433,10 @@ const server = http.createServer(async (req, res) => {
         broadcast({method:'omega/integrations-updated',params:{action:input.action}});return json(res,200,result);
       }
       if(url.pathname==='/api/groups'){
+        if(input.expectedUpdatedAt&&['retry','setBudget'].includes(input.action)){
+          const row=groups.db.prepare('SELECT status,updated_at FROM requirements WHERE id=? AND group_id=?').get(input.requirementId,input.groupId);
+          if(!row||row.status!=='paused'||row.updated_at!==input.expectedUpdatedAt)return json(res,409,{error:'事项已变化或已在其他设备处理，请刷新。'});
+        }
         let result;
         if(input.action==='create'){
           groups.validateGroupInput(input);
