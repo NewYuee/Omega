@@ -120,3 +120,6 @@ body.omega-product #requirement-form>.mention-menu .mention-option{color:#c1d6c9
 .omega-center-dialog button:focus-visible,.omega-center-dialog summary:focus-visible{outline:2px solid #93bba1;outline-offset:3px}
 #sidebar #open-control-center{display:block;width:100%;margin:8px 0;padding:10px;border:1px solid #496251;border-radius:8px;background:#243b30;color:#e4eee7;text-align:center}
 @media(max-width:760px){.omega-center-dialog[open]{border-radius:0}.omega-center-dialog .omega-center{width:100vw;height:100dvh;border-radius:0}.omega-center-dialog .omega-center-grid.is-creating{display:flex}.omega-center-dialog .omega-center-section-title{align-items:flex-start;flex-wrap:wrap}.omega-center-dialog .omega-center>nav{padding:0 10px 10px}.omega-center-dialog .omega-center>nav button{padding:9px}.omega-center-dialog .omega-center-list article footer{flex-wrap:wrap}}
+.keyboard-region{outline:2px solid #83b49d!important;outline-offset:-3px}
+.keyboard-region-item{outline:2px solid #83b49d!important;outline-offset:-2px;background:#315640!important;color:#f1f6ef!important;border-radius:7px}
+.thread-sort select[data-keyboard-editing="true"]{outline:2px solid #e1bb72!important;outline-offset:2px}

@@ -47,6 +47,47 @@ try{for(const width of [390,1280]){
   await page.locator('#group-timeline .room-history').first().click();await page.locator('[data-message-id="old0"]').waitFor();assert.equal(await page.locator('[data-message-id]').count(),120);await page.locator('.room-latest').click();await page.locator('[data-message-id="msg119"]').waitFor();
   await page.locator('[data-message-id="msg117"] .copy-message').click();assert.equal(await page.evaluate(()=>window.copiedText),'# 结果 117\n\n'+('正文内容。'.repeat(1000)));
   const editor=page.locator('#group-prompt');await editor.fill('查询版本');await editor.press('Shift+Enter');await editor.press('End');await editor.press('x');assert.equal(sent.length,0);await editor.press('Enter');await page.waitForFunction(()=>document.querySelector('#group-prompt')?.textContent==='');assert.equal(sent.length,1);assert.match(sent[0].content,/查询版本/);await editor.press('ArrowUp');assert.match(await editor.textContent(),/查询版本/);await editor.fill('');
+  await editor.fill('草稿');await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));await editor.evaluate(node=>{node.blur();getSelection()?.removeAllRanges();});
+  await page.keyboard.type('abc');assert.equal(await editor.textContent(),'草稿abc',JSON.stringify(await page.evaluate(()=>({active:document.activeElement?.outerHTML.slice(0,120),coarse:matchMedia('(pointer:coarse)').matches,blocking:[...document.querySelectorAll('dialog[open],[aria-modal="true"],[role="menu"],.omega-palette-backdrop,.thread-more-menu,.group-more-menu,.group-budget-menu[open],.group-mode-menu[open]')].filter(n=>n.getClientRects().length).map(n=>n.outerHTML.slice(0,120))}))));
+  await editor.evaluate(node=>{node.blur();getSelection()?.removeAllRanges();});
+  await page.locator('main>header').evaluate(node=>{node.tabIndex=-1;node.focus();getSelection()?.removeAllRanges();});
+  await page.keyboard.press('ArrowDown');assert.equal(await editor.evaluate(node=>document.activeElement===node),false);
+  await page.locator('main>header').evaluate(node=>{node.tabIndex=-1;node.focus();getSelection()?.removeAllRanges();});
+  await page.keyboard.press('Space');assert.equal(await editor.evaluate(node=>document.activeElement===node),false);
+  await page.evaluate(()=>document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Process',keyCode:229,bubbles:true})));
+  assert.equal(await editor.evaluate(node=>document.activeElement===node),true);
+  await editor.fill('');
+  await page.keyboard.press('Alt+ArrowRight');
+  assert.equal(await page.locator('.keyboard-region').count(),1);
+  const firstRegion=await page.locator('.keyboard-region').evaluate(node=>node.id||node.className);
+  if(width>=700){
+    await page.keyboard.press('Home');assert.equal(await page.evaluate(()=>document.activeElement.id),'show-chats');
+    await page.keyboard.press('Enter');await page.waitForFunction(()=>!document.body.classList.contains('group-mode'));
+    await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowDown');await page.keyboard.press('ArrowDown');
+    assert.equal(await page.evaluate(()=>document.activeElement.matches('.thread-sort select')),true);
+    const sortValue=await page.locator('.thread-sort select').inputValue();
+    await page.keyboard.press('ArrowDown');assert.equal(await page.evaluate(()=>document.activeElement.matches('.thread-open')),true);
+    assert.equal(await page.locator('.thread-sort select').inputValue(),sortValue);
+    await page.keyboard.press('ArrowUp');await page.keyboard.press('Enter');await page.keyboard.press('Home');
+    assert.equal(await page.locator('.thread-sort select').inputValue(),'updated');
+    await page.keyboard.press('Tab');
+    assert.equal(await page.locator('[data-keyboard-editing]').count(),0,'Tab exits sorting edit mode');
+    assert.equal(await page.locator('.keyboard-region-item').evaluate(node=>node===document.activeElement),true,'highlight follows keyboard focus');
+    await page.keyboard.press('ArrowUp');await page.keyboard.press('Enter');
+    await page.keyboard.press('Escape');await page.keyboard.press('ArrowUp');assert.equal(await page.evaluate(()=>document.activeElement.id),'new');
+    await page.keyboard.press('Home');
+    await page.keyboard.press('ArrowRight');assert.equal(await page.evaluate(()=>document.activeElement.id),'show-groups');
+    await page.keyboard.press('Enter');await page.waitForFunction(()=>document.body.classList.contains('group-mode'));
+    await page.keyboard.press('ArrowDown');assert.equal(await page.evaluate(()=>document.activeElement.id),'new-group');
+    await page.keyboard.press('End');assert.equal(await page.evaluate(()=>document.activeElement.id),'settings');
+    await page.keyboard.press('ArrowUp');assert.equal(await page.evaluate(()=>document.activeElement.id),'open-control-center');
+  }
+  await page.keyboard.press('ArrowDown');assert.equal(sent.length,1,'region navigation must not send a message');
+  await page.keyboard.press('Alt+ArrowRight');
+  const nextRegion=await page.locator('.keyboard-region').evaluate(node=>node.id||node.className);
+  if(width>=700)assert.notEqual(nextRegion,firstRegion,'desktop should navigate between visible regions');
+  await page.keyboard.press('Escape');assert.equal(await editor.evaluate(node=>document.activeElement===node),true);
+  assert.equal(await page.locator('.keyboard-region').count(),0);
   await page.locator('.group-expand').click();assert.ok(await page.locator('body').evaluate(n=>n.classList.contains('group-composer-expanded')));await page.getByRole('button',{name:'收起',exact:true}).click();
   const more=page.locator('#group-more');await more.locator('summary').click();await page.locator('.member-panel-toggle').click();if(width<800){assert.ok(await page.locator('.group-panel').first().isVisible());await page.locator('.group-panel').first().locator('.mobile-panel-close').click();}
   await page.locator('[data-message-id="msg118"] .cancel-requirement').click();await page.waitForFunction(()=>document.querySelector('#group-prompt')?.textContent?.includes('检查项目'));assert.equal(sent.at(-1).action,'cancel');
@@ -60,6 +101,9 @@ try{for(const width of [390,1280]){
   await page.locator('#open-control-center').click();
   const center=page.getByRole('dialog',{name:'工作控制中心',exact:true});
   await center.waitFor();
+  await center.getByRole('button',{name:'关闭',exact:true}).focus();await page.keyboard.press('a');
+  await page.keyboard.press('Alt+ArrowRight');assert.equal(await page.locator('.keyboard-region').count(),0,'modal blocks region navigation');
+  assert.equal(await editor.evaluate(node=>document.activeElement===node),false,'dialog must not yield focus to composer');
   const navigation=center.locator('nav[aria-label="控制中心分类"]');
   assert.ok((await navigation.boundingBox()).height<=56,'control navigation must remain a compact single row');
   const tabRects=await navigation.locator('button').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().top));
