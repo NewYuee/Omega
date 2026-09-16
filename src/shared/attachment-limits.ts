@@ -1,0 +1,2 @@
+export const MAX_MESSAGE_IMAGES=20;
+export const MAX_MESSAGE_TEXT_FILES=20;

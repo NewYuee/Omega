@@ -1,3 +1,4 @@
+import {MAX_MESSAGE_TEXT_FILES} from '../../src/shared/attachment-limits.js';
 import {mentionAvatar} from './mention-avatar.js';
 import {forwardRef,useEffect,useImperativeHandle,useRef,useState} from 'react';
 import type {PastedTextRef,PastedTextTransport} from './pasted-content.js';
@@ -27,6 +28,7 @@ function recallWithoutImages(draft:RichPasteDraft):RichPasteDraft{
 }
 
 export const RichPasteEditor=forwardRef<RichPasteEditorHandle,Props>(function RichPasteEditor({mentionMembers=[],onShortcut,scope='',className,id,label,placeholder,disabled,transport,onChange,onEnter,onFiles,images=[],onRemoveImage,report},ref){
+  const documentQueue=useRef<Promise<unknown>>(Promise.resolve());
   const selectedMention=useRef<HTMLElement|null>(null);
   const recall=useRef(new Map<string,RichPasteDraft>()),self=useRef<RichPasteEditorHandle|null>(null);
   const savedRange=useRef<Range|null>(null),imageRefs=useRef(images);imageRefs.current=images;
@@ -58,7 +60,7 @@ export const RichPasteEditor=forwardRef<RichPasteEditorHandle,Props>(function Ri
   const makeToken=(key:string,chars:number,status='')=>{const token=document.createElement('span');token.className='pasted-content-token';token.dataset.pasteKey=key;token.contentEditable='false';token.tabIndex=0;token.setAttribute('role','button');token.setAttribute('aria-label',`${tokenLabel(chars)}，点击预览`);const mark=document.createElement('span');mark.className='pasted-content-mark';mark.textContent='›';const name=document.createElement('span');name.className='pasted-content-name';name.textContent=tokenLabel(chars);const state=document.createElement('span');state.className='pasted-content-status';state.textContent=status;const close=document.createElement('span');close.className='pasted-content-remove';close.dataset.action='remove';close.setAttribute('role','button');close.setAttribute('aria-label','删除整段粘贴内容');close.textContent='×';token.append(mark,name,state,close);return token;};
   const addLongPaste=async(source:string|File)=>{
     const root=editor.current;if(!root||disabled)return;
-    if(pastes.current.size+uploading.current.size>=4){report('每条消息最多包含 4 个文本附件（含长粘贴）');return;}
+    if(pastes.current.size+uploading.current.size>=MAX_MESSAGE_TEXT_FILES){report('每条消息最多包含 20 个文本附件（含长粘贴）');return;}
     if(typeof source!=='string'){try{validateAttachmentFile(source)}catch(error){report(error instanceof Error?error.message:String(error));return;}}
     const range=selectionRange(root)||savedRange.current;if(range&&root.contains(range.commonAncestorContainer)){const selected=window.getSelection();selected?.removeAllRanges();selected?.addRange(range);}
     const key=draftKey(),name=typeof source==='string'?undefined:source.name,token=makeToken(key,typeof source==='string'?[...source].length:0,'保存中…');
@@ -69,7 +71,10 @@ export const RichPasteEditor=forwardRef<RichPasteEditorHandle,Props>(function Ri
       const text=typeof source==='string'?source:document?'':await readTextFile(source);
       if(!token.isConnected||!uploading.current.has(key))return;
       if(document&&!transport.uploadDocument)throw Error('当前连接不支持文档上传，请更新客户端后重试');
-      const item=document?await transport.uploadDocument!(source as File):await transport.upload(text);
+      const uploadDocument=()=>{if(!token.isConnected||!uploading.current.has(key))return null;return transport.uploadDocument!(source as File);};
+      const pending=document?documentQueue.current.then(uploadDocument):transport.upload(text);
+      if(document)documentQueue.current=pending.catch(()=>{});
+      const item=await pending;if(!item)return;
       if(!token.isConnected||!uploading.current.has(key))return;
       pastes.current.set(key,{...item,key,name});
       token.querySelector('.pasted-content-name')!.textContent=name||tokenLabel(item.chars);

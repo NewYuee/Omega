@@ -1,3 +1,4 @@
+import {MAX_MESSAGE_TEXT_FILES} from '../shared/attachment-limits.ts';
 import {validateMentions} from './member-mentions.ts';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
@@ -12,7 +13,7 @@ const json=(value:any)=>JSON.stringify(value??null);
 const parse=(value:any,fallback:any=null):any=>{try{return value==null||value===''?fallback:JSON.parse(value);}catch{return fallback;}};
 const clean=(value:any,name:string,max=4000,required=false):string=>{value=typeof value==='string'?value.trim():value==null?'':null;if(value==null||value.length>max||/\u0000/.test(value))throw new Error(`${name}格式不正确或过长`);if(required&&!value)throw new Error(`请填写${name}`);return value;};
 const cleanAvatar=(value:any)=>{value=clean(value,'头像',100000);if(!value||/^preset:(?:developer|designer|tester|analyst|operator|coordinator)$/.test(value)||/^data:image\/(?:png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(value))return value;throw new Error('头像格式不正确');};
-const cleanPastes=(value:any)=>{if(value==null)return[];if(!Array.isArray(value)||value.length>4)throw new Error('粘贴文本引用格式不正确');return value.map(item=>{if(!item||typeof item.id!=='string'||!Number.isInteger(item.chars)||item.chars<1||!Number.isInteger(item.bytes)||item.bytes<1)throw new Error('粘贴文本引用格式不正确');return{id:item.id,chars:item.chars,bytes:item.bytes,createdAt:item.createdAt,expiresAt:item.expiresAt};});};
+const cleanPastes=(value:any)=>{if(value==null)return[];if(!Array.isArray(value)||value.length>MAX_MESSAGE_TEXT_FILES)throw new Error('粘贴文本引用格式不正确');return value.map(item=>{if(!item||typeof item.id!=='string'||!Number.isInteger(item.chars)||item.chars<1||!Number.isInteger(item.bytes)||item.bytes<1)throw new Error('粘贴文本引用格式不正确');return{id:item.id,chars:item.chars,bytes:item.bytes,createdAt:item.createdAt,expiresAt:item.expiresAt};});};
 const overlap=(a:string,b:string)=>{const left=path.resolve(a),right=path.resolve(b);return left===right||left.startsWith(right+path.sep)||right.startsWith(left+path.sep);};
 const accessMode=(value:any,title='',objective='')=>{if(value==='read'||value==='write')return value;const content=`${title} ${objective}`;const writes=/修改|实现|开发|修复|新增|创建|删除|写入|更新(?:代码|文件|配置|依赖|数据库|实现)|升级|安装|部署|构建|提交|合并|重构|配置|生成|落地|编码|改造|write|edit|implement|develop|fix|create|delete|update\s+(?:code|files?|config|dependencies|database|implementation)|install|deploy|build|commit|merge|refactor/i,reads=/查询|统计|筛选|复核|审核|分析|调研|检查|核对|盘点|汇总|阅读|查看|确认|检索|query|search|review|audit|analy[sz]e|inspect|check|read|research|summari[sz]e/i;return reads.test(content)&&!writes.test(content)?'read':'write';};
 const workspaceConflict=(leftMode:string,rightMode:string)=>leftMode!=='read'||rightMode!=='read';

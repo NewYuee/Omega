@@ -12,7 +12,9 @@ try{for(const group of [false,true]){
   await page.addScriptTag({content:bundle.outputFiles[0].text});
   await page.evaluate(group=>{
     window.sent=[];window.uploads=[];window.reports=[];
+    window.documentUploads=[];window.documentsActive=0;window.documentsPeak=0;
     const actions={upload:async text=>{window.uploads.push(text);await new Promise(r=>setTimeout(r,100));return{id:'text-'+window.uploads.length,chars:[...text].length,bytes:new TextEncoder().encode(text).length,createdAt:Date.now(),expiresAt:Date.now()+86400000}},read:async()=>window.uploads[0],submit:async value=>{window.sent.push(value);return true},stop(){},addFiles(){return[]},removeImage(){},removeAttachment(){},openModelSettings(){},cancelReply(){},report:message=>window.reports.push(message)};
+    actions.uploadDocument=async file=>{window.documentUploads.push(file.name);window.documentsActive++;window.documentsPeak=Math.max(window.documentsPeak,window.documentsActive);try{if(file.name==='hold.pdf')await new Promise(resolve=>window.releaseDocument=resolve);if(file.name==='fail.pdf')throw Error('mock document failure');return{id:'doc-'+file.name,chars:10,bytes:10,createdAt:Date.now(),expiresAt:Date.now()+86400000};}finally{window.documentsActive--;}};
     (group?window.omegaReactGroupComposer:window.omegaReactComposer).render({scope:'test',enabled:true,sending:false,active:false,attachmentsReady:true,attachments:[],workspace:'/work',members:[{id:'member-1',name:'dramaclaw-owner',role:'owner'}],replyTo:null},actions);
   },group);
   const editor=page.locator(group?'#group-prompt':'#prompt'),send=page.locator(group?'#submit-requirement':'#send'),picker=page.getByLabel('选择附件');
@@ -64,5 +66,18 @@ try{for(const group of [false,true]){
   await picker.setInputFiles({name:'bad.zip',mimeType:'application/zip',buffer:Buffer.from('bad')});assert.equal(await page.locator('.pasted-content-token').count(),0);assert.equal(await page.evaluate(()=>window.reports.length),1);
   await editor.evaluate(node=>{const data=new DataTransfer();data.items.add(new File(['# dropped'],'drop.md',{type:'text/plain'}));node.dispatchEvent(new DragEvent('drop',{dataTransfer:data,bubbles:true,cancelable:true}));});
   await page.waitForFunction(()=>document.querySelector('.pasted-content-status')?.textContent==='');assert.equal(await page.locator('.pasted-content-name').textContent(),'drop.md');
+  await page.locator('.pasted-content-remove').click();
+  await picker.setInputFiles(Array.from({length:21},(_,index)=>({name:`file-${index}.txt`,mimeType:'text/plain',buffer:Buffer.from('content '+index)})));
+  await page.waitForFunction(()=>document.querySelectorAll('.pasted-content-token').length===20&&[...document.querySelectorAll('.pasted-content-status')].every(node=>!node.textContent));
+  assert.match(await page.evaluate(()=>window.reports.at(-1)),/20/);
+  await editor.fill('');
+  await picker.setInputFiles(['hold.pdf','removed.pdf','fail.pdf','last.pdf'].map(name=>({name,mimeType:'application/pdf',buffer:Buffer.from('%PDF-mock')})));
+  await page.waitForFunction(()=>typeof window.releaseDocument==='function');
+  await page.locator('.pasted-content-token').filter({has:page.locator('.pasted-content-name',{hasText:'removed.pdf'})}).locator('.pasted-content-remove').click();
+  await page.evaluate(()=>window.releaseDocument());
+  await page.waitForFunction(()=>window.documentUploads.includes('last.pdf')&&[...document.querySelectorAll('.pasted-content-status')].every(node=>!node.textContent));
+  assert.deepEqual(await page.evaluate(()=>window.documentUploads),['hold.pdf','fail.pdf','last.pdf']);
+  assert.equal(await page.evaluate(()=>window.documentsPeak),1);
+  assert.equal(await page.locator('.pasted-content-token').count(),2);
   assert.deepEqual(errors,[]);await page.close();console.log(`PASS ${group?'group':'single'} file insertion, preview, send, recall, removal, validation and drop`);
 }}finally{await browser.close()}

@@ -1,3 +1,4 @@
+import {MAX_MESSAGE_IMAGES} from '../../src/shared/attachment-limits.js';
 import {apiFetch} from './platform.js';
 
 interface ImageRef{id:string;expiresAt:number}
@@ -22,7 +23,7 @@ export function createAttachments({getKey,isLocked,onChange,onError}:AttachmentO
   function ingest(files:Iterable<File>){
     if(isLocked())return [];const added:string[]=[];
     for(const file of files){
-      if(records.length>=4){onError('每条消息最多 4 张图片');break;}
+      if(records.length>=MAX_MESSAGE_IMAGES){onError('每条消息最多 20 张图片');break;}
       if(!['image/png','image/jpeg','image/webp'].includes(file.type)){onError('仅支持 PNG、JPEG、WebP 图片；请先将其他格式转换后上传');continue;}
       if(!file.size||file.size>8*1024*1024){onError('每张图片不得超过 8 MB');continue;}
       const record:UploadRecord={key:`image-${++sequence}`,name:file.name||'粘贴的图片',status:'等待上传…',controller:new AbortController(),file};records.push(record);added.push(record.key);
