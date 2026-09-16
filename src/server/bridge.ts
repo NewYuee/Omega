@@ -57,7 +57,7 @@ export class Bridge extends EventEmitter{
 
   private async initializeCurrent(reconnected:boolean){
     try{
-      this.info=await this.request('initialize',{clientInfo:{name:'omega',title:'Omega',version:'0.2.0'},capabilities:{experimentalApi:true}});
+      this.info=await this.request('initialize',{clientInfo:{name:'omega',title:'Omega',version:'0.2.1'},capabilities:{experimentalApi:true}});
       this.write({method:'initialized'});this.ready=true;this.restartDelay=500;
       if(reconnected)this.emit('event',{method:'omega/reconnected',params:{message:'Codex App Server 已恢复连接'}});
       return this.info;
