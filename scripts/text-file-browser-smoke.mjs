@@ -61,7 +61,7 @@ try{for(const group of [false,true]){
   await page.keyboard.insertText('补充');await page.waitForFunction(()=>document.querySelector('.pasted-content-status')?.textContent==='');
   assert.equal(await page.locator('.pasted-content-name').textContent(),'demo.ts');
   await page.locator('.pasted-content-name').click();await page.getByRole('dialog').waitFor();assert.match(await page.getByRole('dialog').textContent(),/const value/);await page.getByLabel('关闭预览').click();
-  await send.click();const sent=await page.evaluate(()=>window.sent[0]);assert.match(sent.text,/^前\[Pasted Content \d+ chars\]补充后$/);assert.equal(sent.pasteIds.length,1);
+  await send.click();const sent=await page.evaluate(()=>window.sent[0]);assert.match(sent.text,/^前\[Pasted Content \d+ chars id=text-1\]补充后$/);assert.equal(sent.pasteIds.length,1);
   await editor.press('ArrowUp');assert.equal(await page.locator('.pasted-content-name').textContent(),'demo.ts');await page.locator('.pasted-content-remove').click();assert.equal(await editor.textContent(),'前补充后');
   await picker.setInputFiles({name:'bad.zip',mimeType:'application/zip',buffer:Buffer.from('bad')});assert.equal(await page.locator('.pasted-content-token').count(),0);assert.equal(await page.evaluate(()=>window.reports.length),1);
   await editor.evaluate(node=>{const data=new DataTransfer();data.items.add(new File(['# dropped'],'drop.md',{type:'text/plain'}));node.dispatchEvent(new DragEvent('drop',{dataTransfer:data,bubbles:true,cancelable:true}));});

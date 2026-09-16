@@ -40,13 +40,13 @@ export const directAssignments=(content:string,members:Row[],mentions:MemberMent
   return [...assigned].map(([memberId,parts])=>{const objective=compactTaskObjective(parts.join('\n'));return{memberId,title:objective.slice(0,80),objective};});
 };
 
-const pastedFiles=(refs:Row[]=[],contents:string[]=[])=>contents.length?'\n\n粘贴文本文件：\n'+contents.map((text,index)=>`<pasted-file name="Pasted Content ${refs[index]?.chars||[...text].length} chars.txt">\n${text}\n</pasted-file>`).join('\n\n'):'';
+const pastedFiles=(refs:Row[]=[],contents:string[]=[])=>contents.length?'\n\n粘贴文本文件：\n'+contents.map((text,index)=>`<pasted-file id="${refs[index]?.id||index}" name="Pasted Content ${refs[index]?.chars||[...text].length} chars.txt">\n${text}\n</pasted-file>`).join('\n\n'):'';
 export function memberTaskPrompt(group:Row,req:Row,member:Row,task:Row,pastedContents:string[]=[]){
   const mode=(task.accessMode||task.access_mode)==='read'?'read':'write';
   const dependencies=new Set(task.dependencies||JSON.parse(task.dependencies_json||'[]'));
   const handoffs=req.tasks.filter((item:Row)=>dependencies.has(item.id)&&item.status==='completed'&&item.memberId!==member.id);
   const lines=[req.images?.length?String(task.objective||task.title).replace(/\[OmegaImage:[a-zA-Z0-9-]+\]/g,'[见用户原图]'):task.objective||task.title];
-  if(req.images?.length)lines.push(`用户图文原文（图片位置以此为准）：\n${req.content}`);
+  if(req.images?.length||pastedContents.length)lines.push(`用户图文原文（附件位置以此为准）：\n${req.content}`);
   if(req.collaborationMode==='handoff')lines.push(`本问题允许必要的成员交接，最多 ${req.maxRounds} 轮。仅在当前任务范围内交接，不扩展用户授权。完成当前工作后如需其他成员接续，在回复末尾追加 <omega-handoff>{"tasks":[{"memberId":"目标成员 id","objective":"明确且必要的后续工作"}]}</omega-handoff>，最多 3 人。不需要交接就正常回复。可交接成员：${JSON.stringify(group.members?.filter((m:Row)=>m.id!==member.id).map((m:Row)=>({id:m.id,name:m.name,role:m.role})))}`);
   if(req.collaborationMode==='discussion')lines.push(`当前为只读讨论，第 ${task.round||task.round_no||1}/${req.maxRounds} 轮。只提供新的事实、意见或必要的纠正。没有新内容时只回复 (pass)。不要执行文件修改、部署或发布。`);
   if(req.acceptance)lines.push(req.acceptance);

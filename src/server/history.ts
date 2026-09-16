@@ -15,7 +15,7 @@ const itemCapability=(rpc:RpcClient,threadId:string)=>itemPagination.get(rpc)?.g
 const rememberItemCapability=(rpc:RpcClient,threadId:string,value:boolean)=>{let values=itemPagination.get(rpc);if(!values){values=new Map();itemPagination.set(rpc,values)}values.set(threadId,value)};
 const unsupportedItems=(error:unknown)=>/thread\/items\/list.*(?:not supported|unsupported)|(?:not supported|unsupported method|method not found|not implemented).*thread\/items\/list/i.test(error instanceof Error?error.message:String(error));
 export function textOf(item:HistoryItem){if(item.type==='userMessage')return(item.content||[]).map(value=>value.text||'[附件]').join(item.content?.some(value=>value.text?.includes('[OmegaImage:'))?'':'\n');if(item.type==='agentMessage')return item.text||'';if(item.type==='commandExecution')return'$ '+(item.command||'')+'\n'+(item.aggregatedOutput||'');return JSON.stringify(item,null,2);}
-export function historyPage(thread:Thread,input:PageInput={},attachments:(item:HistoryItem,turn:Turn)=>Attachment[]=()=>[]){const turns=thread.turns||[],index=input.turnId?turns.findIndex(turn=>turn.id===input.turnId):turns.length-1,turn=turns[index],offset=Math.max(0,Math.floor(Number(input.offset)||0));const mapped=(turn?.items||[]).map(item=>{const refs=item.type==='userMessage'?attachments(item,turn):[],ordered=item.type==='userMessage'?{...item,content:inlineImageContent(item.content||[],refs.map(ref=>ref.id))}:item,chat=['userMessage','agentMessage'].includes(item.type||''),full=textOf(ordered),start=input.itemId===item.id?offset:0;return{id:item.id,type:item.type,status:item.status,inlineImages:item.type==='userMessage'&&full.includes('[OmegaImage:'),images:item.type==='userMessage'?attachments(item,turn):[],pageText:chat||input.itemId===item.id?imageSafeSlice(full,start,PAGE_SIZE):'',totalLength:full.length,offset:start,deferred:!chat&&input.itemId!==item.id};});return{thread:{id:thread.id,name:thread.name,preview:thread.preview?.slice(0,100),cwd:thread.cwd},outline:turns.map((entry,index)=>({id:entry.id,label:textOf((entry.items||[]).find(item=>item.type==='userMessage')||{}).slice(0,70)||'会话记录',index})),turn:turn?{id:turn.id,status:turn.status,startedAt:turn.startedAt,completedAt:turn.completedAt,durationMs:turn.durationMs,items:input.itemId?mapped.filter(item=>item.id===input.itemId):mapped}:null};}
+export function historyPage(thread:Thread,input:PageInput={},attachments:(item:HistoryItem,turn:Turn)=>Attachment[]=()=>[],layout:(item:HistoryItem,turn:Turn)=>string|undefined=()=>undefined){const turns=thread.turns||[],index=input.turnId?turns.findIndex(turn=>turn.id===input.turnId):turns.length-1,turn=turns[index],offset=Math.max(0,Math.floor(Number(input.offset)||0));const mapped=(turn?.items||[]).map(item=>{const refs=item.type==='userMessage'?attachments(item,turn):[],ordered=item.type==='userMessage'?{...item,content:inlineImageContent(item.content||[],refs.map(ref=>ref.id))}:item,chat=['userMessage','agentMessage'].includes(item.type||''),full=layout(item,turn!)??textOf(ordered),start=input.itemId===item.id?offset:0;return{id:item.id,type:item.type,status:item.status,inlineImages:item.type==='userMessage'&&full.includes('[OmegaImage:'),images:item.type==='userMessage'?attachments(item,turn):[],pageText:chat||input.itemId===item.id?imageSafeSlice(full,start,PAGE_SIZE):'',totalLength:full.length,offset:start,deferred:!chat&&input.itemId!==item.id};});return{thread:{id:thread.id,name:thread.name,preview:thread.preview?.slice(0,100),cwd:thread.cwd},outline:turns.map((entry,index)=>({id:entry.id,label:textOf((entry.items||[]).find(item=>item.type==='userMessage')||{}).slice(0,70)||'会话记录',index})),turn:turn?{id:turn.id,status:turn.status,startedAt:turn.startedAt,completedAt:turn.completedAt,durationMs:turn.durationMs,items:input.itemId?mapped.filter(item=>item.id===input.itemId):mapped}:null};}
 
 /** Read a bounded history window using the App Server pagination APIs. */
 export async function paginatedHistoryPage(
@@ -23,10 +23,11 @@ export async function paginatedHistoryPage(
   thread:Thread,
   input:PageInput={},
   attachments:(item:HistoryItem,turn:Turn)=>Attachment[]=()=>[],
+  layout:(item:HistoryItem,turn:Turn)=>string|undefined=()=>undefined,
 ){
   if(input.selectionOnly&&input.turnId){
     const detail=await readTurnDetail(rpc,thread.id,input.turnId,undefined,input.cursor);
-    const page:any=historyPage({...thread,turns:[detail.turn]},input,attachments);
+    const page:any=historyPage({...thread,turns:[detail.turn]},input,attachments,layout);
     page.outline=null;
     page.itemsTruncated=detail.truncated;
     return page;
@@ -35,7 +36,7 @@ export async function paginatedHistoryPage(
   const listed=await rpc.request('thread/turns/list',{threadId:thread.id,cursor:input.cursor||null,limit:compatibility?COMPAT_TURN_PAGE_SIZE:TURN_PAGE_SIZE,sortDirection:'desc',itemsView:'summary'});
   const turns:Turn[]=[...(listed.data||[])].reverse();
   if(input.outlineOnly){
-    const page:any=historyPage({...thread,turns},input,attachments);
+    const page:any=historyPage({...thread,turns},input,attachments,layout);
     page.turn=null;
     page.nextCursor=listed.nextCursor||null;
     return page;
@@ -47,17 +48,17 @@ export async function paginatedHistoryPage(
     if(detail.compatibility){
       const compatibilityPage=detail.compatibilityPage;
       const compatibleTurns:Turn[]=[...compatibilityPage.data].reverse(),selected=compatibleTurns.find(turn=>turn.id===selectedId)||compatibleTurns.at(-1);
-      const page:any=historyPage({...thread,turns:compatibleTurns},{...input,turnId:selected?.id},attachments);
+      const page:any=historyPage({...thread,turns:compatibleTurns},{...input,turnId:selected?.id},attachments,layout);
       page.itemsTruncated=false;page.nextCursor=compatibilityPage.nextCursor||null;page.compatibilityMode='turns';return page;
     }
     const index=turns.findIndex(turn=>turn.id===selectedId);
     if(index>=0)turns[index]=detail.turn;
-    const page:any=historyPage({...thread,turns},{...input,turnId:selectedId},attachments);
+    const page:any=historyPage({...thread,turns},{...input,turnId:selectedId},attachments,layout);
     page.itemsTruncated=detail.truncated;
     page.nextCursor=listed.nextCursor||null;
     return page;
   }
-  const page:any=historyPage({...thread,turns},input,attachments);
+  const page:any=historyPage({...thread,turns},input,attachments,layout);
   page.nextCursor=listed.nextCursor||null;
   return page;
 }

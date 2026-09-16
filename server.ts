@@ -1,3 +1,4 @@
+import {submissionLayout} from './src/server/submission-layout.ts';
 import {inlineImageContent} from './src/shared/inline-images.ts';
 import http from 'node:http';
 import { readFile, mkdir, writeFile, realpath, stat, rename } from 'node:fs/promises';
@@ -96,7 +97,8 @@ function attachments(item:Row,threadId:string,turnId:string) {
 function publicItem(item:Row,threadId:string,turnId:string) {
   if (item.type !== 'userMessage') return item;
   const pasteRefs:Row[]=ledger[item.id]?.pasteRefs||turnPastes.get(threadId+':'+turnId)||pendingPastes.get(threadId)||[];
-  return {...item,images:attachments(item,threadId,turnId),pastedTexts:pasteRefs,content:inlineImageContent((item.content||[]) as Row[],attachments(item,threadId,turnId).map(ref=>ref.id)).flatMap(x =>
+  const layout=submissionLayout(item,threadId,turnId,ledger);
+  return {...item,images:attachments(item,threadId,turnId),pastedTexts:pasteRefs,content:(layout!==undefined?[{type:'text',text:layout}]:inlineImageContent((item.content||[]) as Row[],attachments(item,threadId,turnId).map(ref=>ref.id))).flatMap(x =>
     ['image','localImage'].includes(x.type||'') ? [{type:'image'}] : x.type==='text'&&String(x.text||'').startsWith('\n\n<omega_pasted_files>')?[]:[x])};
 }
 function indexSearchItem(item:Row,threadId:string,turnId:string,title=threadId){if(!item||!['userMessage','agentMessage'].includes(item.type))return;const content=item.type==='agentMessage'?item.text:(item.content||[]).map((part:Row)=>part.text||'').join('\n');if(content?.trim())searchStore.index({scope:'thread',id:threadId,anchor:turnId,title,content});}
@@ -498,8 +500,8 @@ const server = http.createServer(async (req, res) => {
         const fresh=freshThreads.get(input.threadId);
         const result = fresh || await bridge.request('thread/read', {threadId:input.threadId,includeTurns:false});
         const page:any=fresh
-          ? historyPage(result.thread,input,(item,turn)=>attachments(item,input.threadId,turn.id))
-          : await paginatedHistoryPage(bridge,result.thread,input,(item,turn)=>attachments(item,input.threadId,turn.id));
+          ? historyPage(result.thread,input,(item,turn)=>attachments(item,input.threadId,turn.id),(item,turn)=>submissionLayout(item,input.threadId,turn.id,ledger))
+          : await paginatedHistoryPage(bridge,result.thread,input,(item,turn)=>attachments(item,input.threadId,turn.id),(item,turn)=>submissionLayout(item,input.threadId,turn.id,ledger));
         page.settings=await settingsFor(input.threadId,result);
         if(page.turn)page.turn.modelSettings=turnSettings.get(input.threadId+':'+page.turn.id)||null;
         if(page.turn) {
