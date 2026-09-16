@@ -12,6 +12,11 @@ try{for(const width of [390,1280]){
   const stamp=new Date().toISOString(),member={id:'m',threadId:'thread',name:'开发',role:'开发',cwd:'/work/project',responsibilities:'开发项目'};
   const group=()=>({id:'g',name:'浏览器回归',status:'running',members:[member],limits:{maxConcurrency:4},requirements:[{id:'q',content:'检查项目',status:'running',tasks:[{id:'t',memberId:'m',status:'running'}],createdAt:stamp}],messages:Array.from({length:120},(_,i)=>({id:'msg'+i,requirementId:'q',author:i===118?'你':'开发',kind:i===118?'user':'member',content:'# 结果 '+i+'\n\n'+('正文内容。'.repeat(1000)),createdAt:stamp,reference:i===118?undefined:{taskId:'t',threadId:'thread',...(i===119?{type:'progress'}:{})}})),runningTasks:1});
   await page.route('**/*',async route=>{const url=new URL(route.request().url());if(url.pathname.startsWith('/api/images/'))return route.fulfill({body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jT1sAAAAASUVORK5CYII=','base64'),contentType:'image/png'});if(url.pathname==='/api/images')return route.fulfill({json:{id:'group-image-1',expiresAt:Date.now()+86400000}});if(url.pathname.startsWith('/api/')){let json={data:[],active:{},approvals:[]};if(url.pathname==='/api/automations')json={automations:Array.from({length:15},(_,i)=>({id:'auto'+i,name:'定时检查 '+i,prompt:'检查服务运行情况',enabled:true,schedule:{kind:'interval',minutes:60},lastStatus:'idle',nextRunAt:null,lastRunAt:null}))};else if(url.pathname==='/api/status')json={...json,ready:true,workspace:'/work',devices:1};else if(url.pathname==='/api/groups'&&route.request().method()==='GET')json={groups:[{id:'g',name:'浏览器回归',status:'running',memberCount:1}]};else if(url.pathname.startsWith('/api/groups')){if(route.request().method()==='POST')sent.push(route.request().postDataJSON());json=url.searchParams.has('before')?{messages:group().messages.map((m,i)=>({...m,id:'old'+i}))}:{group:group()};}return route.fulfill({json});}const name=url.pathname==='/'?'index.html':url.pathname.slice(1);if(name.includes('..'))return route.abort();try{const body=await readFile(new URL('../web-dist/'+name,import.meta.url));return route.fulfill({body,contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''})}});
+  const originalGroup=group;
+  // Exercise the real room filter and React renderer with a visible moderator summary.
+  const summary={id:'msg116',requirementId:'q',kind:'coordinator',author:'讨论主持人',createdAt:stamp,content:'### 讨论结论 · 第 2 轮\n\n共同方向：先验证接口。\n\n推荐方案与理由：先做小范围验证。\n\n下一步：请用户确认范围，不自动执行。\n\npass 不代表赞成。',reference:{type:'discussion-summary',kind:'final',round:2,threadId:'coord'}};
+  const summaryRoute='**/api/groups/g*';
+  await page.route(summaryRoute,async route=>{if(new URL(route.request().url()).searchParams.has('before'))return route.fallback();if(route.request().method()==='POST')sent.push(route.request().postDataJSON());const value=originalGroup();value.messages[116]=summary;return route.fulfill({json:{group:value}});});
   await page.goto('http://omega.test/');
   await page.waitForLoadState('networkidle');
   await page.waitForFunction(()=>typeof window.omegaAppState?.getSnapshot()?.shellActions?.switchMode==='function');
@@ -112,6 +117,10 @@ try{for(const width of [390,1280]){
   await editor.press('End');await editor.press('ArrowRight');await page.keyboard.insertText('图片之后');await editor.press('Enter');
   await page.waitForFunction(()=>document.querySelector('#group-prompt')?.textContent==='');
   assert.deepEqual(sent.at(-1).imageIds,['group-image-1']);assert.match(sent.at(-1).content,/图片之前\[OmegaImage:group-image-1\]图片之后/);
+  const summaryMessage=page.locator('[data-message-id="msg116"]');
+  await summaryMessage.scrollIntoViewIfNeeded();
+  await summaryMessage.getByRole('heading',{name:'讨论结论 · 第 2 轮'}).waitFor();
+  assert.match(await summaryMessage.innerText(),/下一步：请用户确认范围/);
   if(width<700)await page.locator('#menu-toggle').click();
   await page.locator('#open-control-center').click();
   const center=page.getByRole('dialog',{name:'工作控制中心',exact:true});

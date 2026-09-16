@@ -503,6 +503,9 @@ const server = http.createServer(async (req, res) => {
         else if(input.action==='accept')result=groups.accept(input.groupId,input.requirementId);
         else if(input.action==='cancel'){
           const before=groups.getGroup(input.groupId,input.requirementId),targets=new Map<string,string>();
+          const summary=groups.db.prepare("SELECT turn_id,dispatch_id FROM discussion_reports WHERE requirement_id=? AND status IN ('running','unknown') ORDER BY round_no DESC LIMIT 1").get(before.requirement?.id||'');
+          const summaryTurn=summary&&(summary.turn_id||orchestrator.lookupDispatch(summary.dispatch_id));
+          if(summaryTurn&&active.get(before.coordinatorThreadId)===summaryTurn)targets.set(before.coordinatorThreadId,summaryTurn);
           for(const task of before.requirement?.tasks||[]){const member=before.members.find((item:Row)=>item.id===task.memberId),turnId=member&&active.get(member.threadId);if(task.status==='running'&&member&&turnId&&turnId!=='starting')targets.set(member.threadId,turnId);}
           if(['plan_drafting','finalizing'].includes(before.requirement?.status)){const turnId=active.get(before.coordinatorThreadId);if(turnId&&turnId!=='starting')targets.set(before.coordinatorThreadId,turnId);}
           result=groups.cancel(input.groupId,input.requirementId);orchestrator.changed(input.groupId);
