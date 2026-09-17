@@ -9,6 +9,22 @@ import {FeishuManager} from '../src/server/feishu-manager.ts';
 import {createBackup,validateBackup} from '../src/server/backup.ts';
 const credentials={appId:'cli_1234567890abcdef',appSecret:'test-secret-never-return'};
 const binding={chatId:'oc_group',chatType:'group',userIds:['ou_owner'],target:{kind:'group',id:'g'}};
+test('different chats can share a target and removal persists without removing the other binding',async t=>{
+  const f=await fixture(t);await f.act('connect',credentials);
+  await f.act('save',{enabled:true,bindings:[binding],confirmAuthorization:true});
+  const pair=await f.act('pair'),message=event(pair.pairing.code);message.message.chat_id='oc_second';
+  f.runtimes.at(-1).receive(message);
+  await f.act('confirmPair',{code:pair.pairing.code,target:binding.target,confirmAuthorization:true});
+  assert.equal((await f.settings.read()).bindings.length,2);
+  const remaining=(await f.settings.read()).bindings.filter(b=>b.chatId!=='oc_group');
+  f.runtimes.at(-1).idle=false;
+  await assert.rejects(f.act('save',{enabled:true,bindings:remaining,confirmAuthorization:true}),/待处理/);
+  assert.equal((await f.settings.read()).bindings.length,2);
+  f.runtimes.at(-1).idle=true;
+  await f.act('save',{enabled:true,bindings:remaining,confirmAuthorization:true});
+  const saved=await new FeishuSettings(f.dir,{}).read();
+  assert.deepEqual(saved.bindings.map(b=>b.chatId),['oc_second']);assert.deepEqual(saved.bindings[0].target,binding.target);
+});
 const event=(code,user='ou_owner')=>({sender:{sender_type:'user',sender_id:{open_id:user}},message:{message_id:'om_pair',chat_id:'oc_group',chat_type:'group',message_type:'text',create_time:String(Date.now()),content:JSON.stringify({text:`@_user_1 /omega-pair ${code}`}),mentions:[{key:'@_user_1',id:{open_id:'ou_bot'}}]}});
 test('group-wide access requires confirmation, persists and survives same-target pairing',async t=>{
   const f=await fixture(t);await f.act('connect',credentials);

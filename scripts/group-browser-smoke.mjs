@@ -172,12 +172,15 @@ try{for(const width of [390,1280]){
   assert.equal(await center.locator('.omega-center-form label').first().evaluate(n=>getComputedStyle(n).marginTop),'0px');
   await page.route('**/api/integrations',route=>route.fulfill({json:{apps:{ok:true,data:{data:[{id:'a',name:'Sites',description:'Build websites',isEnabled:true,isAccessible:true}]}},installed:{ok:true,data:{apps:[]}},mcp:{ok:true,data:{data:[{name:'Browser MCP',tools:{take_screenshot:{}}}]}},plugins:{ok:true,data:{marketplaces:[{name:'Official',plugins:[{id:'p',name:'Designer',installed:false,enabled:false}]}]}}}}));
   let feishuState={enabled:false,revision:'r1',appId:'',hasSecret:false,environmentManaged:false,settings:{enabled:false,botOpenId:'',bindings:[]}};
-  const feishuActions=[];
+  const feishuActions=[];let rejectFeishuSave=false,holdFeishuRead=false,heldFeishuRead;
   await page.route('**/api/feishu',async route=>{
+    if(route.request().method()==='GET'&&holdFeishuRead){holdFeishuRead=false;const snapshot=structuredClone(feishuState);await new Promise(resolve=>{heldFeishuRead=async()=>{await route.fulfill({json:snapshot});resolve();};});return;}
     if(route.request().method()==='POST'){
       const input=route.request().postDataJSON();feishuActions.push(input);
+      if(input.action==='save'&&rejectFeishuSave)return route.fulfill({status:409,json:{error:'飞书仍有待处理任务，请稍后重试'}});
       if(input.action==='connect')feishuState={...feishuState,enabled:true,connection:'connected',revision:'r2',appId:input.appId,hasSecret:true,settings:{...feishuState.settings,enabled:true,botOpenId:'ou_bot'}};
       if(input.action==='pair')feishuState={...feishuState,pairing:{code:'1234567890abcdef12345678',expiresAt:Date.now()+300000}};
+      if(input.action==='cancelPair')feishuState={...feishuState,pairing:null};
       if(input.action==='confirmPair')feishuState={...feishuState,revision:'r3',pairing:null,settings:{...feishuState.settings,bindings:[{chatId:'oc_group',chatType:'group',userIds:['ou_owner'],target:input.target}]}};
       if(input.action==='disable')feishuState={...feishuState,enabled:false,revision:'r4',settings:{...feishuState.settings,enabled:false}};
       if(input.action==='save')feishuState={...feishuState,revision:'r5',settings:{...feishuState.settings,bindings:input.bindings}};
@@ -213,6 +216,33 @@ try{for(const width of [390,1280]){
   await page.waitForFunction(()=>Array.from(document.querySelectorAll('button')).some(b=>b.textContent==='保存绑定设置'&&b.disabled));
   assert.equal(feishuActions.find(a=>a.action==='save').bindings[0].allowAllMembers,true);
   await feishuPanel.getByRole('button',{name:'刷新',exact:true}).click();assert.equal(await access.inputValue(),'all');
+  await access.selectOption('allowlist');
+  assert.ok(await feishuPanel.getByText(/绑定设置有未保存修改/).isVisible());
+  assert.ok(await feishuPanel.getByRole('button',{name:'移除绑定',exact:true}).isDisabled());
+  page.once('dialog',dialog=>dialog.accept());await feishuPanel.getByRole('button',{name:'放弃修改',exact:true}).click();
+  await page.waitForFunction(()=>!document.body.textContent.includes('绑定设置有未保存修改'));
+  await feishuPanel.getByRole('button',{name:'生成 5 分钟一次性配对码'}).click();
+  await feishuPanel.getByRole('button',{name:'复制命令'}).waitFor();
+  feishuState.pairing.candidate={chatId:'oc_second',chatType:'group',userId:'ou_owner'};
+  await feishuPanel.getByRole('button',{name:'刷新',exact:true}).click();
+  await feishuPanel.getByLabel('绑定到',{exact:true}).selectOption('g');
+  assert.match(await feishuPanel.getByLabel('绑定到',{exact:true}).locator('option:checked').textContent(),/可复用/);
+  assert.ok(await feishuPanel.getByRole('note').isVisible());
+  await feishuPanel.getByRole('button',{name:'取消配对',exact:true}).click();
+  rejectFeishuSave=true;page.once('dialog',dialog=>dialog.accept());
+  await feishuPanel.getByRole('button',{name:'移除绑定',exact:true}).click();
+  await feishuPanel.getByRole('alert').filter({hasText:'待处理任务'}).waitFor();
+  assert.ok(await feishuPanel.getByText('飞书群 · oc_group',{exact:true}).isVisible());
+  rejectFeishuSave=false;holdFeishuRead=true;
+  for(let i=0;i<50&&!heldFeishuRead;i++)await page.waitForTimeout(100);
+  assert.ok(heldFeishuRead,'background polling should be captured before removal');
+  page.once('dialog',dialog=>dialog.accept());
+  await feishuPanel.getByRole('button',{name:'移除绑定',exact:true}).click();
+  await feishuPanel.getByText('尚无绑定。即使机器人已连接，也不会执行任何任务。',{exact:true}).waitFor();
+  await heldFeishuRead();await page.waitForTimeout(100);
+  assert.equal(await feishuPanel.getByText('飞书群 · oc_group',{exact:true}).count(),0,'stale poll must not restore a removed binding');
+  await feishuPanel.getByRole('button',{name:'刷新',exact:true}).click();
+  assert.equal(await feishuPanel.getByText('飞书群 · oc_group',{exact:true}).count(),0);
   const layout=await feishuPanel.evaluate(n=>({width:n.clientWidth,scroll:n.scrollWidth}));assert.ok(layout.scroll<=layout.width+1,'Feishu setup must fit mobile width');
   await center.locator('.omega-integrations article').first().waitFor();
   const search=center.getByRole('searchbox');
