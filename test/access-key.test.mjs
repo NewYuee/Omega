@@ -18,6 +18,12 @@ test('key rotation requires authentication, persists, and revokes old access', a
   try {
     const old = (await readFile(join(state,'access-token'),'utf8')).trim();
     const next = 'TestKey8';
+    assert.equal((await request('wrong','feishu')).status,401);
+    assert.equal((await request('wrong','feishu',{action:'connect',appId:'cli_1234567890abcdef',appSecret:'test'})).status,401);
+    const feishu=await (await request(old,'feishu')).json();
+    assert.equal(feishu.enabled,false);assert.equal(feishu.hasSecret,false);assert.ok(feishu.revision);
+    assert.equal((await request(old,'feishu',{action:'disable',revision:'stale'})).status,409);
+    assert.equal((await fetch(`http://127.0.0.1:${port}/api/feishu`,{method:'POST',headers:{authorization:`Bearer ${old}`,'content-type':'application/json',origin:'https://untrusted.example'},body:JSON.stringify({action:'disable',revision:feishu.revision})})).status,403);
     assert.equal((await request('wrong','access-key',{accessKey:next})).status,401);
     assert.equal((await request(old,'access-key',{accessKey:'short'})).status,400);
     for (const accessKey of ['1234567',' TestKey8','TestKey8 ','Test\nKey8','x'.repeat(257)]) {

@@ -3,7 +3,7 @@ import {gzipSync,gunzipSync} from 'node:zlib';
 import {existsSync,readdirSync,readFileSync,writeFileSync,mkdirSync,rmSync,renameSync,lstatSync} from 'node:fs';
 import path from 'node:path';
 
-const roots=['omega.sqlite','omega.sqlite-wal','omega.sqlite-shm','automations.sqlite','automations.sqlite-wal','automations.sqlite-shm','read-state.sqlite','read-state.sqlite-wal','read-state.sqlite-shm','search.sqlite','search.sqlite-wal','search.sqlite-shm','submissions.json','turn-metrics','model-settings','images'];
+const roots=['omega.sqlite','omega.sqlite-wal','omega.sqlite-shm','automations.sqlite','automations.sqlite-wal','automations.sqlite-shm','read-state.sqlite','read-state.sqlite-wal','read-state.sqlite-shm','search.sqlite','search.sqlite-wal','search.sqlite-shm','submissions.json','turn-metrics','model-settings','images','pasted-text'];
 interface Archive{format:'omega-backup';version:1;createdAt:string;files:{path:string,size:number,sha256:string,data:string}[]}
 function files(root:string,relative:string):string[]{const full=path.join(root,relative);if(!existsSync(full))return[];const entries=readdirSync(full,{withFileTypes:true});return entries.flatMap(entry=>entry.isSymbolicLink()?[]:entry.isDirectory()?files(root,path.join(relative,entry.name)):[path.join(relative,entry.name)]);}
 function safeRelative(value:string){if(!value||path.isAbsolute(value)||value.split(path.sep).includes('..')||!roots.some(root=>value===root||value.startsWith(root+path.sep)))throw new Error('备份包含不允许的路径');return value;}

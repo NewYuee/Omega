@@ -123,3 +123,15 @@ body.omega-product #requirement-form>.mention-menu .mention-option{color:#c1d6c9
 .keyboard-region{outline:2px solid #83b49d!important;outline-offset:-3px}
 .keyboard-region-item{outline:2px solid #83b49d!important;outline-offset:-2px;background:#315640!important;color:#f1f6ef!important;border-radius:7px}
 .thread-sort select[data-keyboard-editing="true"]{outline:2px solid #e1bb72!important;outline-offset:2px}
+.omega-center-dialog .omega-feishu .omega-feishu-fields{display:flex;flex-direction:column;gap:12px;min-width:0;margin:16px 0;padding:16px;border:1px solid var(--border,#394238);border-radius:12px}
+.omega-center-dialog .omega-feishu legend{padding:0 6px;font-weight:600}
+.omega-center-dialog .omega-feishu label{display:flex;flex-direction:column;gap:6px;min-width:0}
+.omega-center-dialog .omega-feishu input,.omega-center-dialog .omega-feishu select{width:100%;min-width:0;box-sizing:border-box}
+.omega-center-dialog .omega-feishu button{align-self:flex-start;min-height:32px}
+.omega-center-dialog .omega-feishu .omega-center-form{padding:0;background:transparent;border:0;display:block}
+.omega-center-dialog .omega-feishu-pair,.omega-center-dialog .omega-feishu-binding{display:flex;flex-direction:column;gap:10px;padding:12px;border:1px solid var(--border,#394238);border-radius:8px;overflow-wrap:anywhere}
+.omega-center-dialog .omega-feishu p{margin:0;line-height:1.6}
+.omega-center-dialog .omega-feishu code{white-space:normal;overflow-wrap:anywhere}
+.omega-center-dialog .omega-feishu ul{padding-left:20px;margin:0}
+.omega-center-dialog .omega-feishu li{margin:6px 0;overflow-wrap:anywhere}
+.omega-center-dialog .omega-feishu .omega-center-actions{flex-wrap:wrap}

@@ -1,4 +1,7 @@
 import {submissionLayout} from './src/server/submission-layout.ts';
+import {prepareManagedInput} from './src/server/managed-input.ts';
+import {FeishuSettings} from './src/server/feishu-settings.ts';
+import {FeishuManager} from './src/server/feishu-manager.ts';
 import {groupAttention} from './src/server/attention.ts';
 import {repositoryView} from './src/server/repository-view.ts';
 import {inlineImageContent} from './src/shared/inline-images.ts';
@@ -152,7 +155,7 @@ let automationService:AutomationService;
 let orchestrator:GroupOrchestrator;
 bridge.on('event',(event:Row)=>{
   if(event.method==='omega/disconnected'){
-    active.clear();activeCwds.clear();pendingImages.clear();pendingModels.clear();
+    active.clear();activeCwds.clear();pendingImages.clear();pendingPastes.clear();pendingModels.clear();
   }
   if(event.method==='omega/reconnected')queueMicrotask(()=>orchestrator?.resume());
   observeGroupProgress(event as any);
@@ -162,6 +165,7 @@ bridge.on('event',(event:Row)=>{
     searchStore.removeThread(event.params.threadId);
     active.delete(event.params.threadId);
     pendingImages.delete(event.params.threadId);
+    pendingPastes.delete(event.params.threadId);
     activeCwds.delete(event.params.threadId);
     const binding=groups.markThreadUnavailable(event.params.threadId);
     if(binding)broadcast({method:'omega/group-updated',params:{groupId:binding.groupId}});
@@ -175,6 +179,7 @@ bridge.on('event',(event:Row)=>{
   }
   if (event.method === 'turn/started') { active.set(event.params.threadId, event.params.turn.id); freshThreads.delete(event.params.threadId); }
   if(event.method==='turn/started'){
+    const pastes=pendingPastes.get(event.params.threadId);if(pastes?.length)turnPastes.set(event.params.threadId+':'+event.params.turn.id,pastes);
     const model=pendingModels.get(event.params.threadId);
     if(model){turnSettings.set(event.params.threadId+':'+event.params.turn.id,model);event={...event,params:{...event.params,turn:{...event.params.turn,modelSettings:model}}};}
   }
@@ -182,7 +187,7 @@ bridge.on('event',(event:Row)=>{
   if (event.params?.turn?.items) event = {...event,params:{...event.params,turn:{...event.params.turn,
     items:event.params.turn.items.map((item:Row)=>publicItem(item,event.params.threadId,event.params.turn.id))}}};
   if (event.method === 'turn/completed') {
-    active.delete(event.params.threadId); activeCwds.delete(event.params.threadId); pendingImages.delete(event.params.threadId); pendingModels.delete(event.params.threadId);
+    active.delete(event.params.threadId); activeCwds.delete(event.params.threadId); pendingImages.delete(event.params.threadId); pendingPastes.delete(event.params.threadId); pendingModels.delete(event.params.threadId);
     if(event.params.turn?.id)automationService?.complete(event.params.turn.id,event.params.turn.status==='completed',event.params.turn.error?.message,event.params.turn.status==='interrupted');
     const binding=groups.threadBinding(event.params.threadId);if(binding)queueMicrotask(()=>orchestrator.schedule(binding.groupId));
   }
@@ -196,25 +201,28 @@ async function startManagedTurn(threadId:string,text:string,submissionId:string,
   if (active.has(threadId)) throw Object.assign(new Error('该会话正在处理其他任务'), { status: 409 });
   if (ledger[submissionId]?.result) return ledger[submissionId].result;
   if (ledger[submissionId]) throw Object.assign(new Error('该派发在服务重启前结果未知，请先核对会话'), { status: 409 });
-  const managedInput=await images.turnInput([{type:'text',text}],execution.imageIds||[]);
+  const {input:managedInput,pasteRefs}=await prepareManagedInput(images,pastedTexts,text,execution);
   const savedSettings=await modelSettings.read(threadId);
   const overrides:Row=await modelSettings.resolve(savedSettings,false);
   const requestedSettings=overrides.model?overrides:nativeSettings.get(threadId)||null;
   const thread=freshThreads.get(threadId)||await bridge.request('thread/resume',{threadId});
+  if(active.has(threadId))throw Object.assign(new Error('该会话正在处理其他任务'),{status:409});
   const binding=groups.threadBinding(threadId),taskCwd=execution.cwd||thread.thread?.cwd,taskMode=execution.accessMode==='read'?'read':'write',conflict=binding?.type==='coordinator'?null:reserveWorkspace(threadId,taskCwd,binding?.groupId||null,taskMode);
   if(conflict)throw Object.assign(new Error(conflict.message),{status:409});
   active.set(threadId,'starting'); if(requestedSettings)pendingModels.set(threadId,requestedSettings);
-  ledger[submissionId]={fingerprint:JSON.stringify({threadId,text}),createdAt:Date.now(),threadId,imageIds:images.fromContent(managedInput).map(image=>image.id),modelSettings:requestedSettings,managed:true};
+  if(pasteRefs.length)pendingPastes.set(threadId,pasteRefs);
+  ledger[submissionId]={fingerprint:JSON.stringify({threadId,text}),createdAt:Date.now(),threadId,imageIds:images.fromContent(managedInput).map(image=>image.id),pasteRefs,modelSettings:requestedSettings,managed:true};
   try {
     await saveLedger();
     const result:Row=await bridge.request('turn/start',{threadId,input:managedInput,clientUserMessageId:submissionId,...overrides,...(execution.cwd?{cwd:execution.cwd}:{})});
     ledger[submissionId].result=result;
     if(result.turn?.id&&execution.imageIds?.length)turnImages.set(threadId+':'+result.turn.id,images.fromContent(managedInput).map(image=>image.id));
+    if(result.turn?.id&&pasteRefs.length)turnPastes.set(threadId+':'+result.turn.id,pasteRefs);
     if(result.turn?.id&&active.get(threadId)==='starting')active.set(threadId,result.turn.id);
     if(requestedSettings&&result.turn?.id){nativeSettings.set(threadId,requestedSettings);turnSettings.set(threadId+':'+result.turn.id,requestedSettings);}
     await saveLedger(); return result;
   } finally {
-    if(active.get(threadId)==='starting'){active.delete(threadId);activeCwds.delete(threadId);pendingModels.delete(threadId);}
+    if(active.get(threadId)==='starting'){active.delete(threadId);activeCwds.delete(threadId);pendingModels.delete(threadId);pendingPastes.delete(threadId);}
   }
 }
 
@@ -263,6 +271,37 @@ orchestrator=new GroupOrchestrator({store:groups,startTurn:startManagedTurn,wait
 automationService=new AutomationService(automationStore,async(threadId,text,submissionId,execution)=>{try{return await startManagedTurn(threadId,text,submissionId,execution)}catch(error){if(!ledger[submissionId]&&error instanceof Error)Object.assign(error,{definiteNotStarted:true});throw error;}},id=>active.has(id),broadcast);
 ready.then(()=>orchestrator.resume()).catch(()=>{});
 ready.then(()=>automationService.start()).catch(()=>{});
+const feishu=new FeishuManager(new FeishuSettings(state),async(config,receive)=>{
+    const {FeishuConnector}=await import('./src/server/feishu-connector.ts');
+    return new FeishuConnector(config,groups.db,{
+      submitGroup:(id,input)=>orchestrator.submit(id,input),getRequirement:id=>groups.getRequirement(id),
+      startThread:async(id,text,dispatch,attachments)=>{try{if(groups.threadBinding(id))throw Error('飞书个人会话不能绑定群组成员或协调者');return await startManagedTurn(id,text,dispatch,attachments)}catch(error){if(!ledger[dispatch]&&error instanceof Error)Object.assign(error,{definiteNotStarted:true});throw error;}},
+      resolveAttachments:async ids=>{await images.turnInput([{type:'text',text:'飞书引用附件'}],ids.imageIds);return{imageRefs:ids.imageIds.map(imageInfo),pasteRefs:await pastedTexts.refs(ids.pasteIds)};},
+      inspectThread:readTurn,readThread:readTurnText,lookupDispatch:id=>ledger[id]?.result?.turn?.id||null,
+      decide:(id,task,input)=>orchestrator.resolveDecision(id,task,input),cancelGroup:cancelGroupRequirement,
+      cancelThread:async(threadId,turnId)=>{if(active.get(threadId)!==turnId)throw Error('原轮次已不在执行');return bridge.request('turn/interrupt',{threadId,turnId});},
+      approvals:id=>[...bridge.approvals.values()].some((r:Row)=>r.params?.threadId===id||(r.params?.threadId&&groups.threadBinding(r.params.threadId)?.groupId===id))
+    },receive,{images,pastes:pastedTexts});
+},async target=>{
+  if(!target||!['group','thread'].includes(target.kind)||typeof target.id!=='string'||!target.id||target.id.length>100)throw Error('请选择有效的 Omega 目标');
+  if(target.kind==='group'){groups.getGroup(target.id);return;}
+  if(groups.threadBinding(target.id))throw Error('不能绑定群组成员或协调者会话');
+  await ready;await bridge.request('thread/read',{threadId:target.id,includeTurns:false});
+});
+// Configuration and bot pairing must remain available while Codex is disconnected.
+const feishuReady=feishu.start();
+async function cancelGroupRequirement(groupId:string,requirementId:string){
+  const before=groups.getGroup(groupId,requirementId),targets=new Map<string,string>();
+  const summary=groups.db.prepare("SELECT turn_id,dispatch_id FROM discussion_reports WHERE requirement_id=? AND status IN ('running','unknown') ORDER BY round_no DESC LIMIT 1").get(before.requirement?.id||'');
+  const summaryTurn=summary&&(summary.turn_id||orchestrator.lookupDispatch(summary.dispatch_id));
+  if(summaryTurn&&active.get(before.coordinatorThreadId)===summaryTurn)targets.set(before.coordinatorThreadId,summaryTurn);
+  for(const task of before.requirement?.tasks||[]){const member=before.members.find((item:Row)=>item.id===task.memberId),turnId=member&&active.get(member.threadId);if(task.status==='running'&&member&&turnId&&turnId===task.turnId)targets.set(member.threadId,turnId);}
+  const coordinatorTurn=active.get(before.coordinatorThreadId);
+  if(coordinatorTurn&&coordinatorTurn!=='starting'&&Object.entries(ledger).some(([id,entry])=>id.startsWith(`group-plan:${requirementId}:`)&&entry.threadId===before.coordinatorThreadId&&entry.result?.turn?.id===coordinatorTurn))targets.set(before.coordinatorThreadId,coordinatorTurn);
+  const result=groups.cancel(groupId,requirementId);orchestrator.changed(groupId);
+  await Promise.allSettled([...targets].map(([threadId,turnId])=>bridge.request('turn/interrupt',{threadId,turnId})));
+  return result;
+}
 const allowed = new Set(['thread/delete', 'thread/name/set', 'thread/list', 'thread/read', 'thread/resume', 'thread/turns/list', 'thread/items/list', 'thread/start', 'turn/start', 'turn/interrupt', 'account/read', 'model/list', 'app/list', 'app/installed', 'app/read', 'plugin/list', 'plugin/read', 'plugin/install', 'plugin/uninstall', 'mcpServerStatus/list', 'mcpServer/oauth/login', 'config/mcpServer/reload']);
 function authorized(req:http.IncomingMessage) {
   const value = Buffer.from((req.headers.authorization || '').replace(/^Bearer /, ''));
@@ -333,6 +372,12 @@ const server = http.createServer(async (req, res) => {
         req.on('close',()=>{clearInterval(heartbeat);clients.delete(client);});return;
       }
       if (url.pathname === '/api/status') {const known=new Set<string>();let anonymous=0;for(const client of clients)client.deviceId?known.add(client.deviceId):anonymous++;return json(res, 200, { ready: bridge.ready, canChangeKey: !process.env.OMEGA_ACCESS_TOKEN, workspace, devices: known.size+anonymous, active: Object.fromEntries(active), approvals: [...bridge.approvals.values()] });}
+      if(url.pathname==='/api/feishu'&&req.method==='GET'){await feishuReady;return json(res,200,await feishu.status());}
+      if(url.pathname==='/api/feishu'&&req.method==='POST'){const input=await body(req);await feishuReady;if(!authorized(req))return json(res,401,{error:'访问密钥已变更，请重新连接'});return json(res,200,await feishu.action(input));}
+      if(url.pathname==='/api/feishu/targets'&&req.method==='GET'){
+        await ready;const cursor=url.searchParams.get('cursor');const result:Row=await bridge.request('thread/list',{limit:100,sourceKinds:[],...(cursor?{cursor}:{})});
+        return json(res,200,{groups:groups.listGroups().map((g:Row)=>({id:g.id,name:g.name})),threads:(result.data||[]).filter((t:Row)=>!groups.threadBinding(t.id)).map((t:Row)=>({id:t.id,name:t.name||t.preview?.slice(0,80)||t.id})),nextCursor:result.nextCursor||null});
+      }
       if(url.pathname==='/api/health'&&req.method==='GET'){const memory=process.memoryUsage();return json(res,200,{status:bridge.ready?'healthy':'degraded',version:'0.2.1',pid:process.pid,startedAt:startedAt.toISOString(),uptimeSeconds:Math.floor(process.uptime()),memory:{rss:memory.rss,heapUsed:memory.heapUsed,heapTotal:memory.heapTotal},bridge:bridge.diagnostics(),clients:clients.size,devices:new Set([...clients].map(client=>client.deviceId).filter(Boolean)).size,activeTurns:active.size,pendingRestore:await stat(path.join(state,'.restore-pending')).then(()=>true).catch(()=>false),supervised:process.env.OMEGA_SUPERVISED==='1'});}
       if(url.pathname==='/api/system'&&req.method==='POST'){const input=await body(req);if(input.action==='restartCodex'){bridge.restart();return json(res,202,{ok:true,message:'Codex App Server 正在重启'});}if(input.action==='restartOmega'){if(process.env.OMEGA_SUPERVISED!=='1')throw Object.assign(new Error('当前 Omega 未由守护进程管理，请在终端重启服务'),{status:409});json(res,202,{ok:true,message:'Omega 正在重启'});setTimeout(()=>process.exit(75),150).unref();return;}throw new Error('不支持的系统操作');}
       if(url.pathname==='/api/read-state'&&req.method==='GET')return json(res,200,readState.snapshot());
@@ -501,16 +546,7 @@ const server = http.createServer(async (req, res) => {
           await bridge.request('turn/interrupt',{threadId:target,turnId});result=groups.getGroup(input.groupId,input.requirementId);
         }
         else if(input.action==='accept')result=groups.accept(input.groupId,input.requirementId);
-        else if(input.action==='cancel'){
-          const before=groups.getGroup(input.groupId,input.requirementId),targets=new Map<string,string>();
-          const summary=groups.db.prepare("SELECT turn_id,dispatch_id FROM discussion_reports WHERE requirement_id=? AND status IN ('running','unknown') ORDER BY round_no DESC LIMIT 1").get(before.requirement?.id||'');
-          const summaryTurn=summary&&(summary.turn_id||orchestrator.lookupDispatch(summary.dispatch_id));
-          if(summaryTurn&&active.get(before.coordinatorThreadId)===summaryTurn)targets.set(before.coordinatorThreadId,summaryTurn);
-          for(const task of before.requirement?.tasks||[]){const member=before.members.find((item:Row)=>item.id===task.memberId),turnId=member&&active.get(member.threadId);if(task.status==='running'&&member&&turnId&&turnId!=='starting')targets.set(member.threadId,turnId);}
-          if(['plan_drafting','finalizing'].includes(before.requirement?.status)){const turnId=active.get(before.coordinatorThreadId);if(turnId&&turnId!=='starting')targets.set(before.coordinatorThreadId,turnId);}
-          result=groups.cancel(input.groupId,input.requirementId);orchestrator.changed(input.groupId);
-          await Promise.allSettled([...targets].map(([threadId,turnId])=>bridge.request('turn/interrupt',{threadId,turnId})));
-        }
+        else if(input.action==='cancel')result=await cancelGroupRequirement(input.groupId,input.requirementId);
         else throw new Error('不支持的群组操作');
         broadcast({method:'omega/group-updated',params:{groupId:result.id}});
         return json(res,200,{group:input.view==='room'?groupRoomView(result):result});
@@ -673,4 +709,4 @@ const server = http.createServer(async (req, res) => {
 });
 server.listen(Number(process.env.PORT || 4310), process.env.OMEGA_HOST || '127.0.0.1', () => console.log(`Omega: http://${process.env.OMEGA_HOST || '127.0.0.1'}:${process.env.PORT || 4310}\nAccess key file: ${tokenPath}\nWorkspace: ${workspace}`));
 let shuttingDown=false;
-for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => {if(shuttingDown)return;shuttingDown=true;clearInterval(imageCleanupTimer);automationService.close();for(const client of clients)client.end();server.close();bridge.close();groups.close();automationStore.close();readState.close();searchStore.close();});
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => {if(shuttingDown)return;shuttingDown=true;clearInterval(imageCleanupTimer);automationService.close();feishu?.close();for(const client of clients)client.end();server.close();bridge.close();groups.close();automationStore.close();readState.close();searchStore.close();});

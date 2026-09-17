@@ -39,13 +39,17 @@ const Timeline=forwardRef<RoomHandle,{model:Model;actions:Actions;area:HTMLEleme
     returnToLatest,
   }),[messages,groupId]);
   const tasks=new Map(model.requirements.flatMap(item=>item.tasks||[]).map(item=>[item.id,item])),requirements=new Map(model.requirements.map(item=>[item.id,item]));
+  // A task can emit many progress messages. Its running state belongs only to
+  // the newest message, not every historical update associated with that task.
+  const latestTaskMessages=new Map<string,string>();
+  for(const message of model.messages)if(message.reference?.taskId)latestTaskMessages.set(message.reference.taskId,message.id);
   return <>
     {more&&messages.length===120&&<button className="room-history" onClick={()=>void load(`before=${encodeURIComponent(messages[0]?.id||'')}`,'bottom')}>加载更早消息</button>}
     {!messages.length&&<p className="group-empty">向群组提出问题，成员会在这里回复。</p>}
     {messages.map(message=>{const task=tasks.get(message.reference?.taskId||''),requirement=requirements.get(message.requirementId||''),member=message.kind==='member'?model.group.members.find(item=>item.id===(message.reference?.memberId||task?.memberId))||model.group.members.find(item=>item.name===message.author):undefined,cancelable=message.kind==='user'&&!message.reference?.type&&requirement&&!['completed','accepted','cancelled'].includes(requirement.status);return <article key={message.id} data-message-id={message.id} data-requirement-id={message.requirementId||''} data-avatar={Array.from(message.author||'成员')[0]?.toUpperCase()||'成'} className={`group-message ${message.kind}`}>
       {['member','coordinator'].includes(message.kind)&&<Avatar value={message.kind==='coordinator'?'preset:coordinator':member?.avatar} name={message.author}/>}<div><strong>{message.author}</strong><time>{new Date(message.createdAt).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</time></div>
       {message.kind!=='user'&&requirement&&<button className="reference-link" onClick={()=>focusVisible(requirement.id)}>回复：{requirement.content.slice(0,60)}</button>}
-      <GroupImageLoader.Provider value={actions.loadImage}>{message.reference?.type==='progress'?<ProgressContent message={message} running={task?.status==='running'}/>:<LazyContent message={message}/>}</GroupImageLoader.Provider>
+      <GroupImageLoader.Provider value={actions.loadImage}>{message.reference?.type==='progress'?<ProgressContent message={message} running={!historical&&task?.status==='running'&&requirement?.status==='running'&&latestTaskMessages.get(task.id)===message.id}/>:<LazyContent message={message}/>}</GroupImageLoader.Provider>
       {task&&requirement?.collaborationMode&&requirement.collaborationMode!=='direct'&&<small>第 {task.round||1}/{requirement.maxRounds||3} 轮 · {requirement.collaborationMode==='discussion'?'讨论':'交接'}</small>}
       {message.reference?.type==='decision-request'&&task?.decision&&message.requirementId&&<DecisionRequest task={task} requirementId={message.requirementId} memberName={message.author} actions={actions}/>}
       {(message.reference?.threadId||(message.kind==='member'&&message.reference?.taskId))&&<div className="group-message-actions">{message.reference?.threadId&&<button type="button" className="reference-link" onClick={()=>actions.openThread(message.reference!.threadId)}>打开会话 ↗</button>}{message.kind==='member'&&message.reference?.taskId&&<button type="button" className="reference-link" onClick={()=>actions.reply({taskId:message.reference!.taskId,name:message.author})}>回复 / 追问</button>}</div>}

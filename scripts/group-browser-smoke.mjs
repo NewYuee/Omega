@@ -10,7 +10,7 @@ try{for(const width of [390,1280]){
   page.on('pageerror',error=>errors.push(error.message));
   await page.addInitScript(()=>{sessionStorage.setItem('omega-key','browser-test-key');Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{window.copiedText=text}},configurable:true});const original=window.fetch;window.fetch=(url,options)=>String(url).includes('/api/events')?Promise.resolve(new Response(new ReadableStream({start(){}}))):original(url,options);});
   const stamp=new Date().toISOString(),member={id:'m',threadId:'thread',name:'开发',role:'开发',cwd:'/work/project',responsibilities:'开发项目'};
-  const group=()=>({id:'g',name:'浏览器回归',status:'running',members:[member],limits:{maxConcurrency:4},requirements:[{id:'q',content:'检查项目',status:'running',tasks:[{id:'t',memberId:'m',status:'running'}],createdAt:stamp}],messages:Array.from({length:120},(_,i)=>({id:'msg'+i,requirementId:'q',author:i===118?'你':'开发',kind:i===118?'user':'member',content:'# 结果 '+i+'\n\n'+('正文内容。'.repeat(1000)),createdAt:stamp,reference:i===118?undefined:{taskId:'t',threadId:'thread',...(i===119?{type:'progress'}:{})}})),runningTasks:1});
+  const group=()=>({id:'g',name:'浏览器回归',status:'running',members:[member],limits:{maxConcurrency:4},requirements:[{id:'q',content:'检查项目',status:'running',tasks:[{id:'t',memberId:'m',status:'running'}],createdAt:stamp}],messages:Array.from({length:120},(_,i)=>({id:'msg'+i,requirementId:'q',author:i===118?'你':'开发',kind:i===118?'user':'member',content:'# 结果 '+i+'\n\n'+('正文内容。'.repeat(1000)),createdAt:stamp,reference:i===118?undefined:{taskId:'t',threadId:'thread',...(i===115||i===119?{type:'progress'}:{})}})),runningTasks:1});
   await page.route('**/*',async route=>{const url=new URL(route.request().url());if(url.pathname.startsWith('/api/images/'))return route.fulfill({body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jT1sAAAAASUVORK5CYII=','base64'),contentType:'image/png'});if(url.pathname==='/api/images')return route.fulfill({json:{id:'group-image-1',expiresAt:Date.now()+86400000}});if(url.pathname.startsWith('/api/')){let json={data:[],active:{},approvals:[]};if(url.pathname==='/api/automations')json={automations:Array.from({length:15},(_,i)=>({id:'auto'+i,name:'定时检查 '+i,prompt:'检查服务运行情况',enabled:true,schedule:{kind:'interval',minutes:60},lastStatus:'idle',nextRunAt:null,lastRunAt:null}))};else if(url.pathname==='/api/status')json={...json,ready:true,workspace:'/work',devices:1};else if(url.pathname==='/api/groups'&&route.request().method()==='GET')json={groups:[{id:'g',name:'浏览器回归',status:'running',memberCount:1}]};else if(url.pathname.startsWith('/api/groups')){if(route.request().method()==='POST')sent.push(route.request().postDataJSON());json=url.searchParams.has('before')?{messages:group().messages.map((m,i)=>({...m,id:'old'+i}))}:{group:group()};}return route.fulfill({json});}const name=url.pathname==='/'?'index.html':url.pathname.slice(1);if(name.includes('..'))return route.abort();try{const body=await readFile(new URL('../web-dist/'+name,import.meta.url));return route.fulfill({body,contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''})}});
   const originalGroup=group;
   // Exercise the real room filter and React renderer with a visible moderator summary.
@@ -64,6 +64,9 @@ try{for(const width of [390,1280]){
   assert.equal(await page.locator('[data-message-id]').count(),120);
   assert.ok(await page.locator('#group-timeline .markdown-body').count()<30,'offscreen Markdown must be unmounted');
   assert.equal(await page.locator('[data-message-id="msg119"] .markdown-body').count(),0,'collapsed progress must stay lazy');
+  assert.equal(await page.locator('[data-message-id="msg115"] summary').textContent(),'处理进度 · 展开详情');
+  assert.equal(await page.locator('[data-message-id="msg119"] summary').textContent(),'正在处理… · 展开详情');
+  assert.equal(await page.locator('#group-timeline summary').filter({hasText:'正在处理'}).count(),1);
   await page.locator('#group-timeline .room-history').first().click();await page.locator('[data-message-id="old0"]').waitFor();assert.equal(await page.locator('[data-message-id]').count(),120);await page.locator('.room-latest').click();await page.locator('[data-message-id="msg119"]').waitFor();
   await page.locator('[data-message-id="msg117"] .copy-message').click();assert.equal(await page.evaluate(()=>window.copiedText),'# 结果 117\n\n'+('正文内容。'.repeat(1000)));
   const editor=page.locator('#group-prompt');await editor.fill('查询版本');await editor.press('Shift+Enter');await editor.press('End');await editor.press('x');assert.equal(sent.length,0);await editor.press('Enter');await page.waitForFunction(()=>document.querySelector('#group-prompt')?.textContent==='');assert.equal(sent.length,1);assert.match(sent[0].content,/查询版本/);await editor.press('ArrowUp');assert.match(await editor.textContent(),/查询版本/);await editor.fill('');
@@ -168,7 +171,49 @@ try{for(const width of [390,1280]){
   assert.ok((await center.locator('.omega-center-body').boundingBox()).height>(await center.boundingBox()).height*0.65,'content must receive most of the dialog height');
   assert.equal(await center.locator('.omega-center-form label').first().evaluate(n=>getComputedStyle(n).marginTop),'0px');
   await page.route('**/api/integrations',route=>route.fulfill({json:{apps:{ok:true,data:{data:[{id:'a',name:'Sites',description:'Build websites',isEnabled:true,isAccessible:true}]}},installed:{ok:true,data:{apps:[]}},mcp:{ok:true,data:{data:[{name:'Browser MCP',tools:{take_screenshot:{}}}]}},plugins:{ok:true,data:{marketplaces:[{name:'Official',plugins:[{id:'p',name:'Designer',installed:false,enabled:false}]}]}}}}));
+  let feishuState={enabled:false,revision:'r1',appId:'',hasSecret:false,environmentManaged:false,settings:{enabled:false,botOpenId:'',bindings:[]}};
+  const feishuActions=[];
+  await page.route('**/api/feishu',async route=>{
+    if(route.request().method()==='POST'){
+      const input=route.request().postDataJSON();feishuActions.push(input);
+      if(input.action==='connect')feishuState={...feishuState,enabled:true,connection:'connected',revision:'r2',appId:input.appId,hasSecret:true,settings:{...feishuState.settings,enabled:true,botOpenId:'ou_bot'}};
+      if(input.action==='pair')feishuState={...feishuState,pairing:{code:'1234567890abcdef12345678',expiresAt:Date.now()+300000}};
+      if(input.action==='confirmPair')feishuState={...feishuState,revision:'r3',pairing:null,settings:{...feishuState.settings,bindings:[{chatId:'oc_group',chatType:'group',userIds:['ou_owner'],target:input.target}]}};
+      if(input.action==='disable')feishuState={...feishuState,enabled:false,revision:'r4',settings:{...feishuState.settings,enabled:false}};
+      if(input.action==='save')feishuState={...feishuState,revision:'r5',settings:{...feishuState.settings,bindings:input.bindings}};
+    }
+    return route.fulfill({json:feishuState});
+  });
+  await page.route('**/api/feishu/targets',route=>route.fulfill({json:{groups:[{id:'g',name:'浏览器回归'}],threads:[]}}));
   await center.getByRole('button',{name:'连接与插件',exact:true}).click();
+  await center.getByRole('heading',{name:'飞书机器人',exact:true}).waitFor();
+  await center.getByRole('region',{name:'飞书连接器'}).getByText('未启用',{exact:true}).waitFor();
+  assert.match(await center.getByRole('region',{name:'飞书连接器'}).innerText(),/未启用/);
+  const feishuPanel=center.getByRole('region',{name:'飞书连接器'});
+  await feishuPanel.getByLabel('App ID',{exact:true}).fill('cli_1234567890abcdef');
+  await feishuPanel.getByLabel('App Secret',{exact:true}).fill('browser-test-secret');
+  assert.equal(await feishuPanel.getByLabel('App Secret',{exact:true}).getAttribute('type'),'password');
+  await feishuPanel.getByRole('button',{name:'验证并保存连接',exact:true}).click();
+  await feishuPanel.getByText('长连接已连接',{exact:true}).waitFor();
+  assert.equal(await feishuPanel.getByLabel('App Secret',{exact:true}).inputValue(),'');
+  await feishuPanel.getByRole('button',{name:'生成 5 分钟一次性配对码'}).click();
+  await feishuPanel.getByRole('button',{name:'复制命令'}).waitFor();
+  feishuState.pairing.candidate={chatId:'oc_group',chatType:'group',userId:'ou_owner'};
+  await feishuPanel.getByRole('button',{name:'刷新',exact:true}).click();
+  await feishuPanel.getByLabel('绑定到',{exact:true}).selectOption('g');
+  page.once('dialog',dialog=>dialog.accept());
+  await feishuPanel.getByRole('button',{name:'确认授权并绑定'}).click();
+  await feishuPanel.getByText('飞书群 · oc_group',{exact:true}).waitFor();
+  assert.equal(feishuActions.find(a=>a.action==='confirmPair').confirmAuthorization,true);
+  assert.deepEqual(feishuActions.find(a=>a.action==='confirmPair').target,{kind:'group',id:'g'});
+  const access=feishuPanel.getByLabel('群成员使用范围 oc_group',{exact:true});
+  assert.equal(await access.inputValue(),'allowlist');await access.selectOption('all');
+  page.once('dialog',dialog=>dialog.accept());
+  await feishuPanel.getByRole('button',{name:'保存绑定设置',exact:true}).click();
+  await page.waitForFunction(()=>Array.from(document.querySelectorAll('button')).some(b=>b.textContent==='保存绑定设置'&&b.disabled));
+  assert.equal(feishuActions.find(a=>a.action==='save').bindings[0].allowAllMembers,true);
+  await feishuPanel.getByRole('button',{name:'刷新',exact:true}).click();assert.equal(await access.inputValue(),'all');
+  const layout=await feishuPanel.evaluate(n=>({width:n.clientWidth,scroll:n.scrollWidth}));assert.ok(layout.scroll<=layout.width+1,'Feishu setup must fit mobile width');
   await center.locator('.omega-integrations article').first().waitFor();
   const search=center.getByRole('searchbox');
   for(const [query,name] of [['WEBSITES','Sites'],['screenshot','Browser MCP'],['designer','Designer']]){
