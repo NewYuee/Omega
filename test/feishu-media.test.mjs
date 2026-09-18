@@ -35,6 +35,18 @@ test('nested text/image/file references become ordered model image parts and rea
   const imageIndex=prepared.input.findIndex(p=>p.type==='localImage');assert.match(prepared.input[imageIndex-1].text,/om_image/);assert.match(prepared.input[imageIndex+1].text,/om_file/);
   assert.deepEqual(quoteAttachmentIds(quoteSnapshot(JSON.stringify(chain))),ids);
 });
+test('post and card inline images retain order through snapshot and actual model input',async t=>{
+  const f=await mediaFixture(t);
+  for(const type of ['post','interactive']){
+    const row=[{tag:'text',text:'图片前的描述'},{tag:'img',image_key:'img_inline'},{tag:'text',text:'图片后的问题 @owner'}];
+    const body=type==='post'?{title:'富文本',content:[row]}:{title:'日志卡片',elements:[row]};
+    const chain=await resolveFeishuQuoteChain('om_rich','oc_group','om_question',async()=>message('om_rich',type,body),f.importer);
+    const restored=quoteSnapshot(JSON.stringify(chain));assert.deepEqual(restored,chain);
+    const content=withFeishuQuoteChain('分析引用',restored),prepared=await prepareManagedInput(f.images,f.pastes,content,quoteAttachmentIds(restored));
+    const i=prepared.input.findIndex(p=>p.type==='localImage');assert.ok(i>0);assert.match(prepared.input[i-1].text,/图片前的描述/);assert.doesNotMatch(prepared.input[i-1].text,/图片后的问题/);assert.match(prepared.input[i+1].text,/图片后的问题/);assert.doesNotMatch(content,/@owner/);
+    restored.messages[0].attachments=[];assert.throws(()=>withFeishuQuoteChain('分析',restored),/缓存不完整/);
+  }
+});
 test('cycles, cross-chat ancestors, deleted nodes and chains beyond the depth cap fail before downloading',async t=>{
   const f=await mediaFixture(t);
   await assert.rejects(resolveFeishuQuoteChain('om_a','oc_group','om_question',async()=>message('om_a','text',{text:'cycle'},'om_a'),f.importer),/循环/);

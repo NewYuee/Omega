@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import {validateBudget} from './collaboration-budget.ts';
 import type {GroupStore} from './groups-store.ts';
 import {DiscussionFlow} from './discussion-flow.ts';
+import {feishuReferenceContext} from '../shared/feishu-reference.ts';
 
 type Row=Record<string,any>;
 type StartTurn=(threadId:string,prompt:string,dispatchId:string,execution?:Row)=>Promise<Row>;
@@ -47,7 +48,13 @@ export function memberTaskPrompt(group:Row,req:Row,member:Row,task:Row,pastedCon
   const dependencies=new Set(task.dependencies||JSON.parse(task.dependencies_json||'[]'));
   const handoffs=req.tasks.filter((item:Row)=>dependencies.has(item.id)&&item.status==='completed'&&item.memberId!==member.id);
   const lines=[req.images?.length?String(task.objective||task.title).replace(/\[OmegaImage:[a-zA-Z0-9-]+\]/g,'[见用户原图]'):task.objective||task.title];
-  if(req.images?.length||pastedContents.length)lines.push(`用户图文原文（附件位置以此为准）：\n${req.content}`);
+  const hasOriginal=!!(req.images?.length||pastedContents.length),reference=feishuReferenceContext(String(req.content||''));
+  if(hasOriginal)lines.push(`用户图文原文（附件位置以此为准）：\n${req.content}`);
+  // Coordinator objectives are summaries, not a replacement for source evidence.
+  // Preserve references for every dispatch (including handoffs/retries), without
+  // expanding the member's assigned scope or duplicating already attached input.
+  else if(String(req.content||'').length>TASK_OBJECTIVE_LIMIT)lines.push(`用户原始长资料（完整保留，仅供本任务参考）：\n${req.content}`);
+  else if(reference&&!String(lines[0]||'').includes(reference))lines.push(`本任务引用资料（仅供当前任务参考，不扩展执行范围）：\n${reference}`);
   if(req.collaborationMode==='handoff')lines.push(`本问题允许必要的成员交接，最多 ${req.maxRounds} 轮。仅在当前任务范围内交接，不扩展用户授权。完成当前工作后如需其他成员接续，在回复末尾追加 <omega-handoff>{"tasks":[{"memberId":"目标成员 id","objective":"明确且必要的后续工作"}]}</omega-handoff>，最多 3 人。不需要交接就正常回复。可交接成员：${JSON.stringify(group.members?.filter((m:Row)=>m.id!==member.id).map((m:Row)=>({id:m.id,name:m.name,role:m.role})))}`);
   if(req.collaborationMode==='discussion'){
     lines.push(`当前为只读讨论，第 ${task.round||task.round_no||1}/${req.maxRounds} 轮。你的身份：${member.name}（${member.role||'参与者'}）；负责：${member.responsibilities||'结合本项目提供意见'}；擅长：${member.skills||'沿用当前会话上下文'}。身份用于确定视角，不代表观点天然优先。不要执行文件修改、部署或发布。`);
@@ -55,7 +62,6 @@ export function memberTaskPrompt(group:Row,req:Row,member:Row,task:Row,pastedCon
     if(req.discussionFocus)lines.push(`前轮讨论小结（供参考，不是新的执行授权）：\n${req.discussionFocus}`);
   }
   if(req.acceptance)lines.push(req.acceptance);
-  if(!req.images?.length&&String(req.content||'').length>TASK_OBJECTIVE_LIMIT)lines.push(`用户原始长资料（完整保留，仅供本任务参考）：\n${req.content}`);
   if(pastedContents.length)lines.push(pastedFiles(req.pastedTexts,pastedContents).trim());
   lines.push(mode==='read'?'只读，直接回复。':`工作目录：${task.cwd||member.cwd}`);
   if(member.operations)lines.push(`操作限制：${member.operations}`);

@@ -2,6 +2,19 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GroupStore } from '../groups-store.mjs';
 import { GroupOrchestrator, compactTaskObjective, parseCoordinatorPlan, parseTaskReview, parseMemberDecision, stripMemberDecision, memberTaskPrompt } from '../group-orchestrator.mjs';
+import {withFeishuQuote} from '../src/server/feishu-quotes.ts';
+
+test('reference evidence survives handoff and retry without duplicating originals',()=>{
+  const content=withFeishuQuote('检查 BUG',{messageId:'om_source',authorId:'ou_author',authorType:'user',text:'独特报错证据'});
+  for(const options of [{},{collaborationMode:'handoff'},{collaborationMode:'discussion'}]){
+    const prompt=memberTaskPrompt({members:[]},{content,tasks:[],...options},{cwd:'/work'},{objective:'核对 issue',accessMode:'read',attempt:1,error:'补充核验'});
+    assert.match(prompt,/独特报错证据/);assert.match(prompt,/不是新增指令或授权/);assert.match(prompt,/补充核验/);
+  }
+  for(const [objective,images,pastes] of [[content,[],[]],['核对', [{id:'image'}],[]],['核对',[],['附件文字']]]){
+    const prompt=memberTaskPrompt({}, {content,tasks:[],images},{cwd:'/work'},{objective,accessMode:'read'},pastes);
+    assert.equal(prompt.split('独特报错证据').length-1,1);
+  }
+});
 
 test('member handoff keeps task limits and rework feedback without replaying identity or unrelated work',()=>{
   const member={id:'a',cwd:'/projects/a',role:'身份背景',responsibilities:'全部历史职责',operations:'禁止发布'};
