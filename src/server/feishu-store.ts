@@ -9,6 +9,7 @@ export class FeishuStore{
     CREATE TABLE IF NOT EXISTS feishu_outbox(id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERENCES feishu_jobs(id),payload TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending',message_id TEXT);
     CREATE TABLE IF NOT EXISTS feishu_actions(id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERENCES feishu_jobs(id),task_id TEXT,decision_id TEXT,kind TEXT NOT NULL,used INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS feishu_quotes(job_id TEXT PRIMARY KEY REFERENCES feishu_jobs(id),message_id TEXT NOT NULL,snapshot TEXT);
+    CREATE TABLE IF NOT EXISTS feishu_inputs(job_id TEXT PRIMARY KEY REFERENCES feishu_jobs(id),snapshot TEXT NOT NULL);
   `);db.exec("UPDATE feishu_jobs SET status='unknown' WHERE status='dispatching'; UPDATE feishu_outbox SET status='unknown' WHERE status='sending'");}
   get(id:string){return this.db.prepare('SELECT * FROM feishu_jobs WHERE id=?').get(id) as FeishuJob|undefined;}
   update(id:string,status:string,requirementId:string|null=null,turnId:string|null=null){this.db.prepare('UPDATE feishu_jobs SET status=?,requirement_id=COALESCE(?,requirement_id),turn_id=COALESCE(?,turn_id) WHERE id=?').run(status,requirementId,turnId,id);}

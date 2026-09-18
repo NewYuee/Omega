@@ -3,7 +3,8 @@ import type {FeishuConfig} from './feishu-config.ts';
 import {feishuUserAllowed} from './feishu-config.ts';
 import {FeishuStore,type FeishuJob} from './feishu-store.ts';
 import {feishuCard,feishuAnswerCard,feishuAnswerPages} from './feishu-cards.ts';
-import {withFeishuQuoteChain,quoteSnapshot,quoteAttachmentIds,resolveFeishuQuoteChain,type FeishuQuoteReader,type FeishuQuoteChain} from './feishu-quotes.ts';
+import {withFeishuQuoteChain,quoteSnapshot,quoteAttachmentIds,resolveFeishuQuoteChain,importFeishuQuoteResources,type FeishuQuoteReader,type FeishuQuoteChain,type FeishuQuote} from './feishu-quotes.ts';
+import {parseFeishuPostInput,renderFeishuPostInput} from './feishu-input.ts';
 import type {FeishuResourceImporter} from './feishu-resources.ts';
 type Row=Record<string,any>;
 export interface FeishuHost{
@@ -37,7 +38,14 @@ export class FeishuService{
     if(m.chat_type==='group'&&!m.mentions?.some((v:Row)=>v.id?.open_id===this.config.botOpenId))return;
     const created=Number(m.create_time);if(!Number.isFinite(created)||Date.now()-created>10*60_000||created>Date.now()+60_000)return;
     const id=this.config.appId+':'+m.message_id;if(this.store.get(id))return;
-    let text='';try{if(m.message_type==='text')text=JSON.parse(m.content).text;}catch{return;}
+    const botKeys=(m.mentions||[]).filter((v:Row)=>v.id?.open_id===this.config.botOpenId&&typeof v.key==='string'&&v.key).map((v:Row)=>v.key);
+    let text='',post:FeishuQuote|undefined,inputError='';
+    try{
+      if(m.message_type==='post'){post=parseFeishuPostInput(m.content,m.message_id,this.config.botOpenId,botKeys);text=post.text;}
+      else if(m.message_type==='text')text=JSON.parse(m.content).text;
+      else inputError='暂不支持直接发送此类型，请使用纯文本或图片＋文字消息；也可以引用图片、文件或卡片后发送文字问题';
+    }catch{inputError='图文或文本消息无法解析、包含不支持的组件或超过限制，请拆分后重发';}
+    if(inputError)text='[未支持或无法解析的消息]';
     if(typeof text!=='string')return;
     for(const mention of m.mentions||[])if(mention.id?.open_id===this.config.botOpenId&&typeof mention.key==='string')text=text.replaceAll(mention.key,'');
     text=text.trim();if(!text||text.length>12000)return;
@@ -45,6 +53,8 @@ export class FeishuService{
     if(pending>=100)return;
     this.store.db.exec('SAVEPOINT feishu_receive');try{
       this.store.db.prepare("INSERT OR IGNORE INTO feishu_jobs(id,chat_id,chat_type,user_id,target_kind,target_id,text,status,created_at) VALUES(?,?,?,?,?,?,?,'queued',?)").run(id,m.chat_id,m.chat_type,user,binding.target.kind,binding.target.id,text,Date.now());
+      if(post)this.store.db.prepare('INSERT INTO feishu_inputs(job_id,snapshot) VALUES(?,?)').run(id,JSON.stringify({version:2,messages:[post]}));
+      if(inputError){this.store.update(id,'failed');this.notify(this.store.get(id)!,'input-error',`本次提问未交给模型：${inputError}。`);}
       // Only the immediate parent is a quote; root_id/thread_id alone must not pull in unrelated history.
       if(m.parent_id)this.store.db.prepare('INSERT OR IGNORE INTO feishu_quotes(job_id,message_id) VALUES(?,?)').run(id,typeof m.parent_id==='string'&&/^om_[\w-]{1,100}$/.test(m.parent_id)?m.parent_id:'invalid');
       this.store.db.exec('RELEASE feishu_receive');
@@ -112,17 +122,26 @@ export class FeishuService{
     let content=mode==='direct'?job.text:job.text.slice(4).trim();
     let attachmentIds={imageIds:[] as string[],pasteIds:[] as string[]},attachmentRefs:{imageRefs:Row[];pasteRefs:Row[]}={imageRefs:[],pasteRefs:[]};
     const reference=this.store.db.prepare('SELECT message_id,snapshot FROM feishu_quotes WHERE job_id=?').get(job.id);
-    if(reference){
+    const input=this.store.db.prepare('SELECT snapshot FROM feishu_inputs WHERE job_id=?').get(job.id);
+    if(reference||input){
       try{
-        const id=String(reference.message_id);if(!/^om_[\w-]+$/.test(id)||id===job.id.slice(this.config.appId.length+1))throw Error('引用消息标识无效');
-        let chain:FeishuQuoteChain;
-        if(reference.snapshot)chain=quoteSnapshot(String(reference.snapshot));
-        else{
-          chain=await resolveFeishuQuoteChain(id,job.chat_id,job.id.slice(this.config.appId.length+1),this.readQuote,this.importResource,()=>{if(this.closed)throw Error('连接器已关闭');});
-          if(this.closed)return;
-          this.store.db.prepare('UPDATE feishu_quotes SET snapshot=? WHERE job_id=?').run(JSON.stringify(chain),job.id);
+        const deadline=Date.now()+120000,assertLive=()=>{if(this.closed)throw Error('连接器已关闭');};
+        const post=input?quoteSnapshot(String(input.snapshot)).messages[0]:undefined;
+        let chain:FeishuQuoteChain|undefined;
+        if(reference){
+          const id=String(reference.message_id);if(!/^om_[\w-]+$/.test(id)||id===job.id.slice(this.config.appId.length+1))throw Error('引用消息标识无效');
+          if(reference.snapshot)chain=quoteSnapshot(String(reference.snapshot));
+          else{
+            chain=await resolveFeishuQuoteChain(id,job.chat_id,job.id.slice(this.config.appId.length+1),this.readQuote,this.importResource,assertLive,true);
+            if(this.closed)return;
+          }
         }
-        content=withFeishuQuoteChain(content,chain);attachmentIds=quoteAttachmentIds(chain);
+        const messages=[...(post?[post]:[]),...(chain?.messages||[])];
+        await importFeishuQuoteResources(messages,this.importResource,assertLive,deadline);if(this.closed)return;
+        if(post){content=renderFeishuPostInput(post,mode);this.store.db.prepare('UPDATE feishu_inputs SET snapshot=? WHERE job_id=?').run(JSON.stringify({version:2,messages:[post]}),job.id);}
+        if(chain){content=withFeishuQuoteChain(content,chain);this.store.db.prepare('UPDATE feishu_quotes SET snapshot=? WHERE job_id=?').run(JSON.stringify(chain),job.id);}
+        if(content.length>12000)throw Error('提问与引用合计超过 12000 字符，请拆分后重发');
+        attachmentIds=quoteAttachmentIds({version:2,messages});
         if(attachmentIds.imageIds.length||attachmentIds.pasteIds.length){
           if(!this.host.resolveAttachments)throw Error('附件传递尚未配置');
           attachmentRefs=await this.host.resolveAttachments(attachmentIds);if(this.closed)return;

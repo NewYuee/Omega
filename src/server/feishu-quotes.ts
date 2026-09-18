@@ -65,7 +65,7 @@ export function quoteAttachmentIds(chain:FeishuQuoteChain){
   const all=chain.messages.flatMap(q=>q.attachments||[]);
   return{imageIds:[...new Set(all.filter(a=>a.kind==='image').map(a=>a.id))],pasteIds:[...new Set(all.filter(a=>a.kind==='file').map(a=>a.id))]};
 }
-export async function resolveFeishuQuoteChain(firstId:string,chatId:string,questionId:string,reader:FeishuQuoteReader,importer?:FeishuResourceImporter,assertLive:()=>void=()=>{}):Promise<FeishuQuoteChain>{
+export async function resolveFeishuQuoteChain(firstId:string,chatId:string,questionId:string,reader:FeishuQuoteReader,importer?:FeishuResourceImporter,assertLive:()=>void=()=>{},deferImport=false):Promise<FeishuQuoteChain>{
   const seen=new Set([questionId]),messages:FeishuQuote[]=[];let id:string|undefined=firstId;
   const deadline=Date.now()+120000;
   while(id){
@@ -76,9 +76,16 @@ export async function resolveFeishuQuoteChain(firstId:string,chatId:string,quest
     let raw:Record<string,any>|undefined;try{raw=await readFeishuQuote(reader,id,Math.min(10000,deadline-Date.now()));}catch{throw Error(`无法读取第 ${messages.length+1} 层引用，请检查权限、消息是否已删除及网络连接，或复制原文重新提问`);}
     assertLive();const quote=parseFeishuQuote(raw,id,chatId);messages.push(quote);id=quote.parentId;
   }
-  const resources=messages.flatMap(q=>q.resources||[]);if(resources.length>MAX_FEISHU_QUOTE_ATTACHMENTS)throw Error(`引用附件超过 ${MAX_FEISHU_QUOTE_ATTACHMENTS} 个`);
-  let bytes=0,textBytes=0;
-  for(const quote of messages)for(const resource of quote.resources||[]){
+  if(!deferImport)await importFeishuQuoteResources(messages,importer,assertLive,deadline);
+  return{version:2,messages};
+}
+export async function importFeishuQuoteResources(messages:FeishuQuote[],importer?:FeishuResourceImporter,assertLive:()=>void=()=>{},deadline=Date.now()+120000){
+  const resources=messages.flatMap(q=>q.resources||[]);if(resources.length>MAX_FEISHU_QUOTE_ATTACHMENTS)throw Error(`消息与引用附件超过 ${MAX_FEISHU_QUOTE_ATTACHMENTS} 个`);
+  const cached=messages.flatMap(q=>q.attachments||[]);
+  let bytes=cached.reduce((n,a)=>n+a.downloadBytes,0),textBytes=cached.reduce((n,a)=>n+a.textBytes,0);
+  if(bytes>MAX_FEISHU_QUOTE_BYTES||textBytes>MAX_FEISHU_QUOTE_FILE_TEXT)throw Error('消息与引用附件超过 32 MB 或文字超过 2 MB');
+  for(const quote of messages)for(const [index,resource] of (quote.resources||[]).entries()){
+    if((quote.attachments?.length||0)>index)continue;
     assertLive();if(Date.now()>=deadline)throw Error('引用链处理超过 2 分钟，请拆分后重试');
     if(!importer)throw Error('附件导入尚未配置');
     const attachment=await importer(resource,MAX_FEISHU_QUOTE_BYTES-bytes);assertLive();
@@ -88,7 +95,6 @@ export async function resolveFeishuQuoteChain(firstId:string,chatId:string,quest
     if(textBytes>MAX_FEISHU_QUOTE_FILE_TEXT)throw Error('引用文件提取的文字合计超过 2 MB，请拆分后重试');
     (quote.attachments??=[]).push(attachment);
   }
-  return{version:2,messages};
 }
 export async function readFeishuQuote(reader:FeishuQuoteReader,messageId:string,timeoutMs=10000){
   let timer:NodeJS.Timeout|undefined;

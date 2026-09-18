@@ -15,16 +15,64 @@ import {resolveFeishuQuoteChain,quoteAttachmentIds,withFeishuQuoteChain,quoteSna
 import {FeishuService} from '../src/server/feishu-service.ts';
 import {FeishuStore} from '../src/server/feishu-store.ts';
 import {directAssignments} from '../src/server/group-orchestrator.ts';
+import {GroupOrchestrator} from '../src/server/group-orchestrator.ts';
+import {GroupStore} from '../src/server/groups-store.ts';
 import {createBackup,validateBackup,stageRestore,applyPendingRestore} from '../src/server/backup.ts';
 const png=await sharp({create:{width:2,height:2,channels:3,background:'#336699'}}).png().toBuffer();
 const message=(id,type,body,parent)=>({message_id:id,msg_type:type,body:{content:JSON.stringify(body)},chat_id:'oc_group',sender:{id:'ou_author',sender_type:'user'},...(parent?{parent_id:parent}:{})});
 const chainMessages={om_text:message('om_text','text',{text:'结合下面的图片和文件解释'},'om_image'),om_image:message('om_image','image',{image_key:'img_test'},'om_file'),om_file:message('om_file','file',{file_key:'file_test',file_name:'notes.txt'})};
+const postEvent=(overrides={})=>({sender:{sender_type:'user',sender_id:{open_id:'ou_owner'}},message:{message_id:'om_post',chat_id:'oc_group',chat_type:'group',message_type:'post',create_time:String(Date.now()),mentions:[{key:'@_user_1',id:{open_id:'ou_bot'}}],content:JSON.stringify({title:'',content:[[{tag:'at',user_id:'ou_bot',user_name:'机器人'},{tag:'text',text:'图片前'},{tag:'img',image_key:'img_one'},{tag:'text',text:'图片中间'},{tag:'img',image_key:'img_two'},{tag:'text',text:'图片后'}]]}),...overrides}});
 async function mediaFixture(t){
   const directory=await mkdtemp(path.join(tmpdir(),'omega-feishu-media-'));t.after(()=>rm(directory,{recursive:true,force:true}));
   const images=new ImageStore(path.join(directory,'images')),pastes=new PastedTextStore(path.join(directory,'pastes'));await images.initialize();await pastes.initialize();const downloads=[];
   const importer=feishuResourceImporter(images,pastes,async(resource,limit)=>{downloads.push({resource,limit});return resource.kind==='image'?png:Buffer.from('文件里的事实：预算为 1200 元。');});
   return{images,pastes,importer,downloads};
 }
+test('direct posts reach real member and private model inputs with ordered images and quoted files',async t=>{
+  for(const kind of ['group','thread'])await t.test(kind,async t=>{
+    const f=await mediaFixture(t),groups=new GroupStore(':memory:');t.after(()=>groups.close());
+    let group=groups.createGroup({name:'图文输入'},'coord','/work');group=groups.addMember(group.id,{name:'开发',role:'开发',threadId:'member',cwd:'/work'});
+    const calls=[],o=new GroupOrchestrator({store:groups,isThreadActive:()=>false,startTurn:async(thread,prompt,_id,execution)=>{if(thread==='member')calls.push(await prepareManagedInput(f.images,f.pastes,prompt,execution));return{turn:{id:thread+'-turn'}};},waitTurn:async()=>({status:'completed'}),readTurnText:async thread=>thread==='coord'?`<omega-plan>${JSON.stringify({summary:'分析',tasks:[{memberId:group.members[0].id,title:'分析',objective:'分析图片和资料',accessMode:'read'}]})}</omega-plan>`:'结果',readPastes:refs=>f.pastes.contents(refs)});o.suspend(group.id);
+    const store=new FeishuStore(groups.db),config={enabled:true,appId:'cli_test',botOpenId:'ou_bot',bindings:[{chatId:'oc_group',chatType:kind==='group'?'group':'p2p',userIds:['ou_owner'],target:{kind,id:kind==='group'?group.id:'member'}}]};
+    const host={submitGroup:(id,input)=>o.submit(id,input),startThread:async(_id,text,_dispatch,ids)=>{calls.push(await prepareManagedInput(f.images,f.pastes,text,ids));return{turn:{id:'private'}};},resolveAttachments:async ids=>({imageRefs:ids.imageIds.map(imageInfo),pasteRefs:await f.pastes.refs(ids.pasteIds)})};
+    const service=new FeishuService(config,store,host,async()=> 'om_reply',async id=>chainMessages[id],f.importer);t.after(()=>service.close());
+    const event=postEvent({chat_type:config.bindings[0].chatType,parent_id:'om_file'});service.receive(event);service.receive(event);
+    assert.equal(f.downloads.length,0);assert.equal(groups.db.prepare('SELECT count(*) n FROM feishu_inputs').get().n,1);
+    await service.tick();if(kind==='group'){const job=store.get('cli_test:om_post');await o.draftPlan(group.id,job.requirement_id);await o.dispatchTask(group.id,groups.runnableTasks(group.id)[0]);}
+    assert.equal(calls.length,1);const parts=calls[0].input,indices=parts.flatMap((p,i)=>p.type==='localImage'?[i]:[]);
+    assert.equal(indices.length,2);assert.match(parts[indices[0]-1].text,/图片前/);assert.match(parts[indices[0]+1].text,/图片中间/);assert.match(parts[indices[1]+1].text,/图片后/);
+    assert.match(JSON.stringify(parts),/预算为 1200 元/);assert.doesNotMatch(JSON.stringify(parts),/@机器人|@_user_1/);
+  });
+});
+
+test('post failures report once; unauthorized posts never parse or download; cached imports survive restart',async t=>{
+  const f=await mediaFixture(t),db=new DatabaseSync(':memory:');t.after(()=>db.close());
+  const store=new FeishuStore(db),config={enabled:true,appId:'cli_test',botOpenId:'ou_bot',bindings:[{chatId:'oc_group',chatType:'group',userIds:['ou_owner'],target:{kind:'group',id:'g'}}]},sent=[],calls=[];
+  const host={submitGroup:(_id,input)=>{calls.push(input);return{requirement:{id:'r'}};},resolveAttachments:async ids=>({imageRefs:ids.imageIds.map(imageInfo),pasteRefs:[]})};
+  let downloads=0;const importer=async(...args)=>{downloads++;return f.importer(...args);};
+  const service=new FeishuService(config,store,host,async(_id,p)=>{sent.push(p);return 'om_reply';},async()=>undefined,importer);t.after(()=>service.close());
+  const unauthorized=postEvent();unauthorized.sender.sender_id.open_id='ou_stranger';service.receive(unauthorized);service.receive(postEvent({mentions:[]}));assert.equal(db.prepare('SELECT count(*) n FROM feishu_jobs').get().n,0);
+  const bad=postEvent({content:'invalid'});service.receive(bad);service.receive(bad);await service.tick();assert.equal(calls.length,0);assert.equal(downloads,0);assert.equal(sent.length,1);assert.match(sent[0].content,/未交给模型/);
+  service.receive(postEvent({message_id:'om_cached'}));await service.tick();assert.equal(downloads,2);assert.equal(calls.length,1);service.close();
+  // Emulate shutdown after input persistence but before dispatch, not a completed-task replay.
+  db.prepare('UPDATE feishu_jobs SET status=? WHERE id=?').run('queued','cli_test:om_cached');
+  const resumed=new FeishuService(config,new FeishuStore(db),host,async()=> 'om_reply',async()=>undefined,async()=>{throw Error('must reuse cache');});t.after(()=>resumed.close());await resumed.tick();assert.equal(calls.length,2);assert.equal(downloads,2);
+});
+test('post commands, combined attachment cap and failed image downloads are enforced',async t=>{
+  for(const scenario of ['discussion','handoff','limit','download'])await t.test(scenario,async t=>{
+    const f=await mediaFixture(t),db=new DatabaseSync(':memory:');t.after(()=>db.close());
+    const store=new FeishuStore(db),config={enabled:true,appId:'cli_test',botOpenId:'ou_bot',bindings:[{chatId:'oc_group',chatType:'group',userIds:['ou_owner'],target:{kind:'group',id:'g'}}]},calls=[],sent=[];
+    let downloads=0;const importer=async(...args)=>{downloads++;if(scenario==='download')throw Error('附件下载失败，请重新发送');return f.importer(...args);};
+    const host={submitGroup:(_id,input)=>{calls.push(input);return{requirement:{id:'r'}};},resolveAttachments:async ids=>({imageRefs:ids.imageIds.map(imageInfo),pasteRefs:[]})};
+    const service=new FeishuService(config,store,host,async(_id,p)=>{sent.push(p);return 'om_reply';},async()=>chainMessages.om_image,importer);t.after(()=>service.close());
+    const directive=scenario==='discussion'?'/讨论 ':scenario==='handoff'?'/交接 ':'';
+    const content={content:[[{tag:'at',user_id:'@_user_1'},{tag:'text',text:directive+'分析图片'},...Array.from({length:scenario==='limit'?20:1},(_,i)=>({tag:'img',image_key:'img_'+i}))]]};
+    service.receive(postEvent({content:JSON.stringify(content),...(scenario==='limit'?{parent_id:'om_image'}:{})}));await service.tick();
+    if(scenario==='limit'||scenario==='download'){
+      assert.equal(calls.length,0);assert.equal(store.get('cli_test:om_post').status,'failed');assert.match(JSON.stringify(sent),/未交给模型/);assert.equal(downloads,scenario==='limit'?0:1);
+    }else{assert.equal(calls.length,1);assert.equal(calls[0].collaborationMode,scenario);assert.doesNotMatch(calls[0].content,/\/讨论|\/交接|@_user_1/);assert.match(calls[0].content,/分析图片/);}
+  });
+});
 test('nested text/image/file references become ordered model image parts and real file text',async t=>{
   const f=await mediaFixture(t),reads=[];
   const chain=await resolveFeishuQuoteChain('om_text','oc_group','om_question',async id=>{reads.push(id);return chainMessages[id];},f.importer);

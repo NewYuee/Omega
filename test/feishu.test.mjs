@@ -76,9 +76,14 @@ test('untrusted senders, bot loops, wrong chats, stale messages and missing bot 
   const f=fixture();try{
     const stranger=event();stranger.sender.sender_id.open_id='ou_stranger';f.service.receive(stranger);
     const bot=event();bot.sender.sender_type='app';f.service.receive(bot);
-    for(const other of [{chat_id:'oc_else'},{mentions:[]},{create_time:'1'},{message_type:'image'},{content:'invalid json'},{content:JSON.stringify({text:'a'.repeat(12001)})}])f.service.receive(event('om_x',other));
+    for(const other of [{chat_id:'oc_else'},{mentions:[]},{create_time:'1'},{content:JSON.stringify({text:'a'.repeat(12001)})}])f.service.receive(event('om_x',other));
     await f.service.tick();assert.equal(f.calls.length,0);assert.equal(f.sent.length,0);
   }finally{f.close()}
+});
+test('authorized unsupported or malformed messages receive a deduplicated explanation',async()=>{
+  for(const other of [{message_type:'image'},{content:'invalid json'}]){
+    const f=fixture();try{f.service.receive(event('om_bad',other));f.service.receive(event('om_bad',other));await f.service.tick();assert.equal(f.calls.length,0);assert.equal(f.sent.length,1);assert.match(JSON.stringify(f.sent),/未交给模型/);}finally{f.close();}
+  }
 });
 test('text is durably deduplicated and only the mapped requirement result returns to original thread',async()=>{
   const f=fixture();try{f.service.receive(event());f.service.receive(event());await f.service.tick();assert.equal(f.calls.length,1);assert.equal(f.calls[0][1].content,'检查项目');assert.equal(f.sent[0][0],'om_1');assert.equal(f.sent[0][3],false);

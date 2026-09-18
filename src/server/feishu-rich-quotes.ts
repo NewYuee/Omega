@@ -4,7 +4,7 @@ export type FeishuQuotePart={text:string}|{resourceIndex:number};
 
 // Walk display fields only: callback values, template variables and actions are
 // not message text. Never follow URLs or resolve a card through another API.
-export function parseFeishuRichQuote(body:Record<string,any>,kind:'post'|'interactive',messageId:string){
+export function parseFeishuRichQuote(body:Record<string,any>,kind:'post'|'interactive',messageId:string,omitMentions:readonly string[]=[]){
   const parts:FeishuQuotePart[]=[],resources:FeishuResource[]=[];
   let nodes=0,chars=0;
   const add=(text:unknown)=>{
@@ -29,7 +29,7 @@ export function parseFeishuRichQuote(body:Record<string,any>,kind:'post'|'intera
       case 'a':
         if(typeof node.href!=='string'||(node.text!==undefined&&typeof node.text!=='string'))throw Error('引用链接结构无效');
         add(`${node.text||node.href} (${node.href})`);return;
-      case 'at':add(`@${node.user_name||node.user_id||'成员'}`);return;
+      case 'at':if(!omitMentions.includes(node.user_id))add(`@${node.user_name||node.user_id||'成员'}`);return;
       case 'img':image(node.image_key??node.img_key);return;
       case 'emotion':add(`[表情：${typeof node.emoji_type==='string'?node.emoji_type:'未知'}]`);return;
       case 'code_block':add(node.text??node.content);return;
