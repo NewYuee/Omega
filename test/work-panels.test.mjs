@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,writeFile,mkdir,access} from 'node:fs/promises';
+import {mkdtemp,writeFile,mkdir,access,symlink,realpath} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
@@ -18,7 +18,8 @@ test('repository view is read-only, literal, paginated and confined to thread pr
   assert.match((await repositoryView(root,{file:'a.txt'})).diff,/\+after/);
   await assert.rejects(repositoryView(root,{file:'../outside'}),/文件已变化/);
   assert.equal((await repositoryView(root,{file:':(glob)*'})).previewable,false);
-  await mkdir(path.join(root,'nested'));await assert.rejects(repositoryView(path.join(root,'nested'),{}),/根目录在会话/);
+  await mkdir(path.join(root,'nested'));assert.equal((await repositoryView(path.join(root,'nested'),{})).root,null);
+  await assert.rejects(repositoryView(path.join(root,'nested'),{repository:'..'}),/可选范围/);
   assert.equal(git('status','--porcelain'),state,'reading must not modify index or files');
   git('add','a.txt');assert.equal((await repositoryView(root,{scope:'staged'})).total,1);
   assert.match((await repositoryView(root,{scope:'staged',file:'a.txt'})).diff,/\+after/);
@@ -27,6 +28,20 @@ test('repository view is read-only, literal, paginated and confined to thread pr
   assert.equal((await repositoryView(root,{})).files.length,50);assert.equal((await repositoryView(root,{offset:50})).files.length,6);
   await writeFile(path.join(root,'.gitattributes'),'a.txt filter=untrusted\n');git('config','filter.untrusted.clean','touch FILTER_EXECUTED; cat');
   await writeFile(path.join(root,'a.txt'),'third\n');await repositoryView(root,{file:'a.txt'});await assert.rejects(access(path.join(root,'FILTER_EXECUTED')));
+});
+
+test('workspace repository selection is bounded, explicit and rejects escapes',async()=>{
+  const base=await realpath(await mkdtemp(path.join(tmpdir(),'omega-repo-selection-')));
+  assert.match((await repositoryView(base,{})).message,/未找到 Git/);
+  const init=async name=>{const dir=path.join(base,name);await mkdir(dir);execFileSync('git',['init','-q'],{cwd:dir});await writeFile(path.join(dir,'new.txt'),name);return dir;};
+  const first=await init('omega');let result=await repositoryView(base,{});assert.equal(result.root,first);assert.equal(result.repository,'omega');
+  await init('other');result=await repositoryView(base,{});assert.equal(result.root,null);assert.deepEqual(result.repositories.map(r=>r.id),['omega','other']);
+  result=await repositoryView(base,{repository:'omega'});assert.equal(result.total,1);assert.equal(result.directory,base);
+  assert.equal((await repositoryView(base,{repository:'other',file:'new.txt'})).previewable,false);
+  for(const repository of ['..','../omega',first,'omega/..','missing'])await assert.rejects(repositoryView(base,{repository}),/可选范围/);
+  const external=await realpath(await mkdtemp(path.join(tmpdir(),'omega-external-repo-')));execFileSync('git',['init','-q'],{cwd:external});await symlink(external,path.join(base,'linked'));
+  assert.ok(!(await repositoryView(base,{})).repositories.some(r=>r.id==='linked'));await assert.rejects(repositoryView(base,{repository:'linked'}),/可选范围/);
+  for(let i=0;i<201;i++)await writeFile(path.join(base,`entry-${i}`),'');assert.equal((await repositoryView(base,{})).truncated,true);
 });
 
 test('repository view supports a newly initialized repository without commits',async()=>{

@@ -445,7 +445,7 @@ const server = http.createServer(async (req, res) => {
         if(typeof input.threadId!=='string'||!input.threadId)throw new Error('请选择会话');
         const result=freshThreads.get(input.threadId)||await bridge.request('thread/read',{threadId:input.threadId,includeTurns:false});
         if(!result.thread?.cwd)throw new Error('会话没有工作目录');
-        return json(res,200,await repositoryView(result.thread.cwd,{scope:input.scope,file:input.file,offset:input.offset}));
+        return json(res,200,await repositoryView(result.thread.cwd,{scope:input.scope,file:input.file,offset:input.offset,repository:input.repository}));
       }
       if(url.pathname==='/api/automations'){
         let result;
