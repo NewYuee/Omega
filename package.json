@@ -1,6 +1,6 @@
 {
   "name": "omega",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "license": "Apache-2.0",
   "overrides": {"officeparser": {"pdfjs-dist": "6.2.108"}},
   "private": true,
