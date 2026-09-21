@@ -4,7 +4,7 @@
 
 Omega 是基于 Codex App Server 的自托管、跨设备 AI 工作台。你可以在 Web、Windows/macOS 桌面端和 Android 上继续单个会话，也可以把不同项目的会话加入群组：提出问题、指定负责人、查看执行进度，并在需要时作出决策。成员保留各自的上下文和实际工作目录。
 
-当前版本：**v0.2.4**。面向个人日常使用，不提供多用户权限或租户隔离。客户端共享 React + TypeScript 产品层，服务端统一连接常驻 Codex App Server。
+当前版本：**v0.2.5**。面向个人日常使用，不提供多用户权限或租户隔离。客户端共享 React + TypeScript 产品层，服务端统一连接常驻 Codex App Server。
 
 ## 许可证
 
