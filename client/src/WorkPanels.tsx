@@ -1,5 +1,5 @@
-import {useEffect,useRef,useState} from 'react';
-import {useAppState} from './AppState.js';
+import {useEffect,useMemo,useRef,useState} from 'react';
+import {appStore,type WorkPanel,useAppState} from './AppState.js';
 import {ApprovalCard} from './ApprovalPanel.js';
 import {repositoryDiffLines} from '../../src/shared/repository-diff.js';
 import {ProjectEntry} from './ProjectPanel.js';
@@ -7,11 +7,12 @@ import {ProjectEntry} from './ProjectPanel.js';
 const api=async<T=any>(route:string,data?:unknown):Promise<T>=>{if(!window.omegaProductApi)throw Error('尚未连接');return window.omegaProductApi<T>(route,data);};
 type Attention={id:string;kind:string;request?:any;groupId?:string;requirementId?:string;taskId?:string;threadId?:string;memberName?:string;groupName?:string;title?:string;decision?:any;pauseKind?:string;updatedAt?:string;automationId?:string;status?:string;error?:string};
 export function WorkPanelEntry(){
-  const app=useAppState(),[tab,setTab]=useState<'attention'|'repository'|null>(null),[total,setTotal]=useState<number|null>(null),dialog=useRef<HTMLDialogElement>(null);
+  const app=useAppState(),[panel,setPanel]=useState<WorkPanel|null>(null),[total,setTotal]=useState<number|null>(null),dialog=useRef<HTMLDialogElement>(null),actions=useMemo(()=>({open:(next:WorkPanel)=>setPanel(next)}),[]);
+  useEffect(()=>{appStore.patch({workPanelActions:actions});return()=>{if(appStore.getSnapshot().workPanelActions===actions)appStore.patch({workPanelActions:null})}},[actions]);
   useEffect(()=>{let alive=true,busy=false;const refresh=async()=>{if(busy||!app.authenticated||document.hidden)return;busy=true;try{const page=await api('attention?summary=1');if(alive)setTotal(page.total??0);}catch{if(alive)setTotal(null);}finally{busy=false;}};void refresh();const timer=setInterval(refresh,10000);window.addEventListener('focus',refresh);window.addEventListener('omega:attention-changed',refresh);return()=>{alive=false;clearInterval(timer);window.removeEventListener('focus',refresh);window.removeEventListener('omega:attention-changed',refresh)}},[app.authenticated]);
-  useEffect(()=>{if(!tab)return;const previous=document.activeElement as HTMLElement;dialog.current?.showModal();return()=>{dialog.current?.close();if(previous?.isConnected)previous.focus();}},[!!tab]);
-  return <><ProjectEntry/><button type="button" className="work-entry" disabled={!app.authenticated} onClick={()=>setTab('attention')}>待处理{total!==null?` ${total}`:''}</button><button type="button" className="work-entry" disabled={!app.authenticated} onClick={()=>setTab('repository')}>变更</button>
-    {tab&&<dialog ref={dialog} className="work-dialog" aria-label={tab==='attention'?'需要你处理':'仓库变更'} onCancel={event=>{event.preventDefault();setTab(null)}}><header><h2>{tab==='attention'?'需要你处理':'仓库变更'}</h2><button type="button" aria-label="关闭工作面板" onClick={()=>setTab(null)}>×</button></header>{tab==='attention'?<AttentionPanel onCount={setTotal} close={()=>setTab(null)}/>:<RepositoryPanel close={()=>setTab(null)}/>}</dialog>}
+  useEffect(()=>{if(!panel||panel==='project')return;const previous=document.activeElement as HTMLElement;dialog.current?.showModal();return()=>{dialog.current?.close();if(previous?.isConnected)previous.focus();}},[panel]);
+  return <><ProjectEntry open={panel==='project'} onOpen={()=>setPanel('project')} onClose={()=>setPanel(null)}/><button type="button" className="work-entry" disabled={!app.authenticated} onClick={()=>setPanel('attention')}>待处理{total!==null?` ${total}`:''}</button><button type="button" className="work-entry" disabled={!app.authenticated} onClick={()=>setPanel('repository')}>变更</button>
+    {panel&&panel!=='project'&&<dialog ref={dialog} className="work-dialog" aria-label={panel==='attention'?'需要你处理':'仓库变更'} onCancel={event=>{event.preventDefault();setPanel(null)}}><header><h2>{panel==='attention'?'需要你处理':'仓库变更'}</h2><button type="button" aria-label="关闭工作面板" onClick={()=>setPanel(null)}>×</button></header>{panel==='attention'?<AttentionPanel onCount={setTotal} close={()=>setPanel(null)}/>:<RepositoryPanel close={()=>setPanel(null)}/>}</dialog>}
   </>;
 }
 function AttentionPanel({onCount,close}:{onCount:(n:number)=>void;close:()=>void}){

@@ -17,15 +17,17 @@ export interface ShellActions{
   newAction():void;
   openSettings():void;
 }
+export type WorkPanel='project'|'attention'|'repository';
+export interface WorkPanelActions{open(panel:WorkPanel):void}
 export interface AppSnapshot{
   mode:'chats'|'groups';threadId:string|null;groupId:string|null;
   chatTitle:string;groupTitle:string;onlineDevices:number|null;
   threads:NavItem[];groups:NavItem[];threadActions:Actions|null;groupActions:Actions|null;
   chatHeader:ChatHeaderState|null;groupHeader:GroupHeaderState|null;
   groupWorkspace:any|null;
-  authenticated:boolean;connected:boolean;connectionLabel:string;notice:string;shellActions:ShellActions|null;
+  authenticated:boolean;connected:boolean;connectionLabel:string;notice:string;shellActions:ShellActions|null;workPanelActions:WorkPanelActions|null;
 }
-let state:AppSnapshot={mode:'chats',threadId:null,groupId:null,chatTitle:'开始下一件事',groupTitle:'创建你的第一个协作群组',onlineDevices:null,threads:[],groups:[],threadActions:null,groupActions:null,chatHeader:null,groupHeader:null,groupWorkspace:null,authenticated:false,connected:false,connectionLabel:'尚未连接',notice:'',shellActions:null};
+let state:AppSnapshot={mode:'chats',threadId:null,groupId:null,chatTitle:'开始下一件事',groupTitle:'创建你的第一个协作群组',onlineDevices:null,threads:[],groups:[],threadActions:null,groupActions:null,chatHeader:null,groupHeader:null,groupWorkspace:null,authenticated:false,connected:false,connectionLabel:'尚未连接',notice:'',shellActions:null,workPanelActions:null};
 const listeners=new Set<()=>void>();
 export const appStore={
   getSnapshot:()=>state,

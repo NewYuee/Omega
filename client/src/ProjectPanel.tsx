@@ -13,11 +13,11 @@ export function CaptureProject({read,messageId,scope}:{read:()=>string|Promise<s
   return <><button className="reference-link project-capture-link" title="自动提取未覆盖时，可手动整理到项目" type="button" disabled={busy||!target} onClick={async()=>{setBusy(true);setError('');try{const content=await read();window.dispatchEvent(new CustomEvent('omega:project-capture',{detail:{...blank(),title:content.split('\n').find(Boolean)?.slice(0,160)||'消息记录',body:content.slice(0,16000),source:{type:scope,target,messageId,excerpt:content.slice(0,16000)}}}));}catch{setError('读取原消息失败，请重试');}finally{setBusy(false);}}}>手动记录</button>{error&&<small role="alert">{error}</small>}</>;
 }
 
-export function ProjectEntry(){
-  const app=useAppState(),[open,setOpen]=useState(false),[draft,setDraft]=useState<Row|null>(null),dialog=useRef<HTMLDialogElement>(null);
-  useEffect(()=>{const capture=(event:Event)=>{setDraft((event as CustomEvent).detail);setOpen(true);};window.addEventListener('omega:project-capture',capture);return()=>window.removeEventListener('omega:project-capture',capture)},[]);
+export function ProjectEntry({open,onOpen,onClose}:{open:boolean;onOpen():void;onClose():void}){
+  const app=useAppState(),[draft,setDraft]=useState<Row|null>(null),dialog=useRef<HTMLDialogElement>(null),close=()=>{setDraft(null);onClose()};
+  useEffect(()=>{const capture=(event:Event)=>{setDraft((event as CustomEvent).detail);onOpen();};window.addEventListener('omega:project-capture',capture);return()=>window.removeEventListener('omega:project-capture',capture)},[onOpen]);
   useEffect(()=>{if(!open)return;const previous=document.activeElement as HTMLElement;dialog.current?.showModal();return()=>{dialog.current?.close();if(previous?.isConnected)previous.focus()}},[open]);
-  return <><button className="work-entry" disabled={!app.authenticated} onClick={()=>setOpen(true)}>项目</button>{open&&<dialog className="work-dialog project-dialog" ref={dialog} aria-label="项目状态" onCancel={e=>{e.preventDefault();setOpen(false);setDraft(null)}}><header><h2>项目状态</h2><button aria-label="关闭项目状态" onClick={()=>{setOpen(false);setDraft(null)}}>×</button></header><ProjectPanel initial={draft} close={()=>{setOpen(false);setDraft(null)}}/></dialog>}</>;
+  return <><button className="work-entry" disabled={!app.authenticated} onClick={onOpen}>项目</button>{open&&<dialog className="work-dialog project-dialog" ref={dialog} aria-label="项目状态" onCancel={e=>{e.preventDefault();close()}}><header><h2>项目状态</h2><button aria-label="关闭项目状态" onClick={close}>×</button></header><ProjectPanel initial={draft} close={close}/></dialog>}</>;
 }
 
 function ProjectPanel({initial,close}:{initial:Row|null;close:()=>void}){

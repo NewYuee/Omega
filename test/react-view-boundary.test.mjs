@@ -45,6 +45,7 @@ test('TypeScript controllers delegate product views exclusively to React',async(
   assert.match(header,/function ChatMenu/);
   assert.match(header,/function GroupMenu/);
   assert.match(header,/上一组问答.*下一组问答/);
+  assert.doesNotMatch(header,/querySelector<HTMLButtonElement>|data-work-entry/);
   assert.doesNotMatch(app,/\$\(['"](?:title|section-caption|devices)['"]\)/);
   assert.doesNotMatch(groups,/\$\(['"](?:title|section-caption|group-state|group-description|group-cwd|add-member)['"]\)/);
   assert.doesNotMatch(groups,/\$\(['"](?:show-chats|show-groups|threads|groups|new|new-group|side-caption|mobile-new)['"]\)/);

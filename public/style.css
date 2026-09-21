@@ -335,6 +335,7 @@ body.group-mode main>header .header-title{flex-direction:column;align-items:flex
 /* Group controls live in one compact title bar; secondary actions stay in the More menu. */
 .history-nav{display:none!important}
 #conversation-header-actions{display:contents}
+.mobile-work-menu{display:none}
 body.group-mode main>header{height:60px;min-height:60px;padding:7px 18px;overflow:visible}
 body.group-mode main>header .header-title{flex:1;min-width:0;gap:2px}
 body.group-mode main>header .header-title .caption{display:none}
@@ -363,6 +364,7 @@ body:not(.group-mode) main>header .header-title .caption{display:none}
 body.group-mode .thread-header-meta,body.group-mode #thread-more{display:none!important}
 #thread-more{position:relative;flex:0 0 auto;color:#263634}
 #thread-more[hidden]{display:none}
+#thread-more[data-empty="true"]{display:none}
 #thread-more>summary{display:flex;align-items:center;min-height:34px;padding:7px 11px;border:1px solid #cbd8d2;border-radius:8px;background:#fff;color:#3f5c52;font-size:11px;cursor:pointer;list-style:none;user-select:none}
 #thread-more>summary::-webkit-details-marker{display:none}
 #thread-more>summary::after{content:'⋮';margin-left:6px;font-size:15px;line-height:10px}
@@ -380,11 +382,16 @@ body.group-mode .thread-header-meta,body.group-mode #thread-more{display:none!im
   body.group-mode main>header{height:52px;min-height:52px;padding:4px 7px;gap:6px}
   body.group-mode main>header h1{font-size:14px}
   .group-header-meta{gap:5px;font-size:9px}
-  .group-description{display:none}
+  .group-description,.group-availability{display:none}
+  main>header .work-entry,#mobile-new-host{display:none}
+  .mobile-work-menu{display:flex;flex-direction:column;gap:3px;padding-bottom:5px;margin-bottom:4px;border-bottom:1px solid #e1e9e5}
+  .mobile-work-menu button{display:flex;align-items:center;justify-content:flex-start;width:100%;min-height:34px;padding:7px 9px;border:0;background:transparent;color:#334e45;font-size:11px;text-align:left}
+  .mobile-work-menu button:hover{background:#edf3f0}
   #group-more>summary{min-height:34px;padding:6px 8px;font-size:10px}
   #group-more>summary::after{margin-left:3px}
   .group-more-menu{position:fixed;top:calc(var(--viewport-top,0px) + 49px);right:7px;width:min(240px,calc(100vw - 14px))}
   .thread-header-meta{font-size:9px}
+  #thread-more[data-empty="true"]{display:block}
   #thread-more>summary{min-height:34px;padding:6px 8px;font-size:10px}
   #thread-more>summary::after{margin-left:3px}
   .thread-more-menu{position:fixed;top:calc(var(--viewport-top,0px) + 49px);right:7px;width:min(360px,calc(100vw - 14px))}

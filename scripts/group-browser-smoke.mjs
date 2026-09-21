@@ -43,6 +43,12 @@ try{for(const width of [390,1280]){
   assert.deepEqual(await page.evaluate(()=>JSON.parse(localStorage.getItem('omega-thread-order-v1')).ids),['b','a']);
   await page.evaluate(()=>window.omegaReactWorkspace.renderThreads([{id:'a',name:'Alpha',updatedAt:99},{id:'b',name:'Beta',updatedAt:1}],null,{open(){},rename(){},remove(){}}));
   assert.equal(await page.locator('[data-thread-id]').first().getAttribute('data-thread-id'),'b');
+  const emptyMore=page.locator('#thread-more[data-empty="true"]');
+  if(width<700){
+    assert.equal(await emptyMore.isVisible(),true,'empty mobile chats must retain the work menu');
+    await emptyMore.locator('summary').click();await emptyMore.getByRole('button',{name:'待处理',exact:true}).click();
+    const attention=page.getByRole('dialog',{name:'需要你处理',exact:true});await attention.waitFor();await attention.getByRole('button',{name:'关闭工作面板'}).click();
+  }else assert.equal(await emptyMore.isVisible(),false,'empty desktop chats do not need a history menu');
   await page.evaluate(()=>window.omegaAppState.getSnapshot().shellActions.switchMode('groups'));
   await page.locator('[data-message-id="msg119"]').waitFor();
   const toolbar=page.locator('.group-composer-toolbar');
@@ -115,7 +121,14 @@ try{for(const width of [390,1280]){
   await page.keyboard.press('Escape');assert.equal(await editor.evaluate(node=>document.activeElement===node),true);
   assert.equal(await page.locator('.keyboard-region').count(),0);
   await page.locator('.group-expand').click();assert.ok(await page.locator('body').evaluate(n=>n.classList.contains('group-composer-expanded')));await page.getByRole('button',{name:'收起',exact:true}).click();
-  const more=page.locator('#group-more');await more.locator('summary').click();await page.locator('.member-panel-toggle').click();if(width<800){assert.ok(await page.locator('.group-panel').first().isVisible());await page.locator('.group-panel').first().locator('.mobile-panel-close').click();}
+  const more=page.locator('#group-more');
+  if(width<700){
+    assert.equal(await page.locator('#mobile-new').isVisible(),false,'mobile header must not duplicate the sidebar create action');
+    for(const entry of await page.locator('main>header .work-entry').all())assert.equal(await entry.isVisible(),false,'mobile work entries belong in the more menu');
+  }
+  await more.locator('summary').click();
+  if(width<700)for(const label of ['项目','待处理','变更'])assert.equal(await more.getByRole('button',{name:label,exact:true}).isVisible(),true,`${label} must remain available in the mobile more menu`);
+  await page.locator('.member-panel-toggle').click();if(width<800){assert.ok(await page.locator('.group-panel').first().isVisible());await page.locator('.group-panel').first().locator('.mobile-panel-close').click();}
   await page.locator('[data-message-id="msg118"] .cancel-requirement').click();await page.waitForFunction(()=>document.querySelector('#group-prompt')?.textContent?.includes('检查项目'));assert.equal(sent.at(-1).action,'cancel');
   await editor.fill('图片之前');await editor.press('End');
   await page.locator('#requirement-form input[type=file]').setInputFiles({name:'group.png',mimeType:'image/png',buffer:Buffer.from('mock')});
