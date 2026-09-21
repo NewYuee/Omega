@@ -30,7 +30,8 @@ try{for(const width of [390,1280]){
     try{return route.fulfill({body:await readFile(new URL('../web-dist/'+name,import.meta.url)),contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'})}catch{return route.fulfill({status:404,body:''})}
   });
   await page.goto('http://omega.test');await page.waitForFunction(()=>window.omegaAppState?.getSnapshot().authenticated);
-  await page.getByRole('button',{name:'项目',exact:true}).click();const panel=page.getByRole('dialog',{name:'项目状态'});
+  if(width<700){const more=page.locator('#thread-more');await more.locator('summary').click();await more.getByRole('button',{name:'项目',exact:true}).click();}else await page.getByRole('button',{name:'项目',exact:true}).click();
+  const panel=page.getByRole('dialog',{name:'项目状态'});
   await panel.getByLabel('新项目名称').fill('Omega');await panel.getByRole('button',{name:'创建项目',exact:true}).click();
   await panel.getByRole('button',{name:'新增记录'}).click();await panel.getByLabel('标题',{exact:true}).fill('项目现状');await panel.getByLabel('内容',{exact:true}).fill('版本 v0.2.3；下一步验证全新会话');
   await panel.getByRole('button',{name:'保存记录'}).click();await panel.locator('article').getByText('项目现状',{exact:true}).waitFor();assert.equal(records[0].status,'candidate');
