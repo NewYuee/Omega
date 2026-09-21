@@ -7,6 +7,7 @@ import { native, apiFetch, initialKey, rememberKey, forgetSessionKey, savedThrea
 import { initGroups } from './groups.js';
 import { createOmegaTransport } from './transport.js';
 import { createPastedTextTransport } from './pasted-content.js';
+import {createChatHistoryPager} from './chat-history-pager.js';
 import type {RichPastePayload} from './RichPasteEditor.js';
 import { isThreadWriterConflict,threadWriterBusyMessage } from '../../src/shared/thread-errors.js';
 type JsonRecord = Record<string, any>;
@@ -32,12 +33,12 @@ let key = initialKey(), lifecycle:any;
 let chatTitle='开始下一件事';
 const setChatTitle=(title:string)=>{chatTitle=title||'选择或新建会话';patchState({chatTitle});};
 const threadSidebarActions={open:(id:string)=>selectAt(id,conversations.position(id)).catch(cause=>error(errorValue(cause).message)),rename:openRename,remove:openDelete};
-function renderThreadSidebar(){window.omegaReactWorkspace?.renderThreads(conversations.sidebarItems(),session.snapshot.threadId,threadSidebarActions);}
+function renderThreadSidebar(){const runningByThread=session.snapshot.active;window.omegaReactWorkspace?.renderThreads(conversations.sidebarItems().map((thread:JsonRecord)=>({...thread,running:!!runningByThread[thread.id]})),session.snapshot.threadId,threadSidebarActions);}
 let deleting = false;
 function removeThread(id:string) {
   conversations.remove(id);renderThreadSidebar();
   if (session.snapshot.threadId !== id) return;
-  session.selectThread(null);timeline.resetDeleted();
+  session.selectThread(null);timeline.resetDeleted(id);
   preferences.reset();
   rememberThread(null);
   setChatTitle('选择或新建会话');
@@ -81,6 +82,15 @@ function jumpLatest() {
 }
 async function previousExchange(){const target=timeline.previous();if(target?.turn!==undefined)return jumpExchange(target.turn);if(target?.page)await switchHistoryPage(target.page)}
 async function nextExchange(){const target=timeline.next();if(target?.turn!==undefined)return jumpExchange(target.turn);if(target?.page)await switchHistoryPage(target.page)}
+const scrollPager=createChatHistoryPager(input=>api('history',input));
+let scrollVersion=-1;
+async function loadOlderExchange(){
+  const threadId=session.snapshot.threadId,targetTurnId=timeline.selectedTurn;
+  if(!threadId||!targetTurnId)return null;
+  const version=timeline.version;
+  if(scrollVersion!==version){scrollPager.reset();scrollVersion=version;}
+  return scrollPager.load({threadId,selectedTurn:targetTurnId,outline:timeline.outline,olderCursor:timeline.olderHistoryCursor,pageCursor:timeline.historyCursor},()=>session.snapshot.threadId===threadId&&timeline.selectedTurn===targetTurnId&&timeline.version===version);
+}
 function error(message:string) { patchState({notice:message||''}); }
 const transport=createOmegaTransport({fetchImpl:apiFetch,getKey:()=>key,deviceId,onUnauthorized:()=>{
   if(session.snapshot.authenticated){
@@ -101,14 +111,14 @@ function applyReadState(state:JsonRecord){conversations.applyReadState(state);fo
 async function syncReadState(){applyReadState(await api('read-state'));}
 async function markThreadRead(id:string|null){if(!id)return;conversations.markRead(id);renderThreadSidebar();try{applyReadState(await api<JsonRecord>('read-state',{scope:'thread',id}));}catch{}}
 function renderComposer(){
-  const current=session.snapshot;window.omegaReactComposer?.render({scope:current.threadId||'',sending,enabled:!!current.threadId,active:!!current.active[current.threadId!],attachmentsReady:attachments.ready,attachments:attachments.records,workspace:current.composerWorkspace||current.serverWorkspace},{submit:sendMessage,stop:stopMessage,addFiles:(files:File[])=>attachments.ingest(files),removeAttachment:(index:number)=>attachments.remove(index),removeImage:(key:string)=>attachments.removeKey(key),openModelSettings:()=>preferences.open(),report:(message:string)=>error(message),...pastedText});
+  const current=session.snapshot;window.omegaReactComposer?.render({scope:current.threadId||'',sending,enabled:!!current.threadId,active:!!current.active[current.threadId!],attachmentsReady:attachments.ready,attachments:attachments.records,workspace:current.composerWorkspace||current.serverWorkspace},{submit:sendMessage,stop:stopMessage,addFiles:(files:File[])=>attachments.ingest(files),removeAttachment:(index:number)=>attachments.remove(index),removeImage:(key:string)=>attachments.removeKey(key),openModelSettings:()=>preferences.open(),openFeishuNotify:(text='')=>window.omegaFeishuNotify?.open(text)??Promise.reject(Error('飞书通知界面尚未就绪')),report:(message:string)=>error(message),...pastedText});
 }
 function controls() { renderComposer();preferences.controls(); }
 window.addEventListener('omega:react-composer-ready',controls);
 function render() {
   if(!window.omegaReactChat)return;
-  const current=session.snapshot,view=timeline.view(!!current.active[current.threadId!]);
-  const actions={fullText:async(item:JsonRecord)=>{const threadId=current.threadId,turnId=timeline.selectedTurn,cursor=timeline.historyCursor||undefined;let text='',offset=0;for(;;){const result=await api('history',{threadId,turnId,itemId:item.id,offset,cursor,selectionOnly:true});const part=result.turn?.items?.find((entry:JsonRecord)=>entry.id===item.id);if(!part)throw Error('回复已不可读取');const chunk=part.pageText||'';text+=chunk;offset+=chunk.length;if(offset>=part.totalLength)return text;if(!chunk)throw Error('回复分页不完整');}},itemText:timeline.itemText,toggle:(item:JsonRecord,open:boolean)=>{timeline.toggleTool(item.id,open);if(open&&item.deferred)loadItem(item,0).catch(cause=>error(errorValue(cause).message));},page:(item:JsonRecord,offset:number)=>loadItem(item,offset).catch(cause=>error(errorValue(cause).message)),loadImage:attachments.loadImage,selectTurn:jumpExchange,previous:()=>previousExchange().catch(cause=>error(errorValue(cause).message)),next:()=>nextExchange().catch(cause=>error(errorValue(cause).message)),latest:jumpLatest};
+  const current=session.snapshot,view={...timeline.view(!!current.active[current.threadId!]),threadId:current.threadId||''};
+  const actions={fullText:async(item:JsonRecord)=>{const threadId=current.threadId,turnId=item.turnId||timeline.selectedTurn,cursor=item.turnId?item.historyCursor||undefined:timeline.historyCursor||undefined;let text='',offset=0;for(;;){const result=await api('history',{threadId,turnId,itemId:item.id,offset,cursor,selectionOnly:true});const part=result.turn?.items?.find((entry:JsonRecord)=>entry.id===item.id);if(!part)throw Error('回复已不可读取');const chunk=part.pageText||'';text+=chunk;offset+=chunk.length;if(offset>=part.totalLength)return text;if(!chunk)throw Error('回复分页不完整');}},itemText:timeline.itemText,toggle:(item:JsonRecord,open:boolean)=>{timeline.toggleTool(item.id,open);if(open&&item.deferred)loadItem(item,0).catch(cause=>error(errorValue(cause).message));},page:(item:JsonRecord,offset:number)=>loadItem(item,offset).catch(cause=>error(errorValue(cause).message)),loadImage:attachments.loadImage,loadOlder:loadOlderExchange,olderItem:async(item:JsonRecord,offset:number)=>{const result=await api('history',{threadId:current.threadId,turnId:item.turnId,itemId:item.id,offset,cursor:item.historyCursor||undefined,selectionOnly:true});const part=result.turn?.items?.find((entry:JsonRecord)=>entry.id===item.id);if(!part)throw Error('历史消息已不可读取');return {...part,turnId:item.turnId,historyCursor:item.historyCursor};},selectTurn:jumpExchange,previous:()=>previousExchange().catch(cause=>error(errorValue(cause).message)),next:()=>nextExchange().catch(cause=>error(errorValue(cause).message)),latest:jumpLatest};
   window.omegaAppState?.patch({chatTitle,chatHeader:{...view.history,historyMode:view.historyMode,actions:{selectTurn:jumpExchange,previous:()=>previousExchange().catch(cause=>error(errorValue(cause).message)),next:()=>nextExchange().catch(cause=>error(errorValue(cause).message)),latest:jumpLatest}}});
   window.omegaReactChat.render(view,actions);
 }
@@ -146,11 +156,11 @@ async function hydrate() {
 async function select(id:string, closeMenu=true,notifyWriterConflict=closeMenu) {
   if(conversations.isDeleted(id))return;
   if(closeMenu){error('');window.omegaReactWorkspace?.closeSidebar();}
-  const version=timeline.beginThread();if(closeMenu)preferences.reset();
+  const version=timeline.beginThread(id);if(closeMenu)preferences.reset();
   attachments.clear();
   session.selectThread(id);rememberThread(id);
   lifecycle.restartStream();
-  window.omegaReactChat?.followLatest();render(); renderApprovals(); controls();
+  if(!timeline.cacheRestored)window.omegaReactChat?.followLatest();render(); renderApprovals(); controls();
   let writerConflict=false;
   try{await rpc('thread/resume',{threadId:id},{summaryOnly:true});}
   catch(cause){if(!isThreadWriterConflict(cause))throw cause;writerConflict=true;}
@@ -171,6 +181,7 @@ function event(message:JsonRecord) {
   if(method==='omega/reconnected'){session.setConnection(session.snapshot.authenticated,true,'已连接');error('');lifecycle.resume();return;}
   if (['thread/deleted','omega/thread-deleted'].includes(method)) { removeThread(p.threadId); return; }
   if(method==='omega/group-updated'){groupUI.onGroupUpdated(p.groupId);return;}
+  if(method==='omega/project-updated'){window.dispatchEvent(new CustomEvent('omega:project-updated',{detail:p}));return;}
   if(method==='omega/group-deleted'){groupUI.onGroupDeleted(p.groupId);return;}
   if(method==='omega/read-state'){if(p.scope==='thread'){conversations.markRead(p.id);renderThreadSidebar();}else{sessionStorage.removeItem('omega-group-unread:'+p.id);groupUI.onReadState(p);}return;}
   if(method==='omega/unread'){if(p.scope==='thread'){conversations.markUnread(p.id,p.count,p.position);renderThreadSidebar();}else{if(p.position&&!sessionStorage.getItem('omega-group-unread:'+p.id))sessionStorage.setItem('omega-group-unread:'+p.id,p.position);groupUI.onUnread(p);}return;}
@@ -189,6 +200,7 @@ function event(message:JsonRecord) {
   if (effect.kind === 'snapshot') { applyReadState(p.readState); renderApprovals(); controls(); hydrate().catch(cause => error(errorValue(cause).message)); return; }
   if (effect.kind === 'approval') { renderApprovals(); return; }
   if (effect.kind === 'approval-resolved') renderApprovals();
+  if (effect.kind === 'turn-started'||effect.kind === 'turn-completed') renderThreadSidebar();
   if (effect.kind === 'turn-completed') { if(p.threadId===session.snapshot.threadId&&!groupUI.isGroupMode()&&!document.hidden)markThreadRead(p.threadId); if (p.turn.error) error(p.turn.error.message); list().catch(()=>{}); if(window.omegaDesktop?.notify)window.omegaDesktop.notify({title:p.turn?.status==='completed'?'Omega 已完成':'Omega 需要处理',body:p.turn?.error?.message||'会话任务已经结束',threadId:p.threadId}); }
   controls();
   if (p.threadId !== session.snapshot.threadId) return;
@@ -206,7 +218,7 @@ lifecycle=runtime.createLifecycle({
   enabled:()=>session.snapshot.authenticated,visible:()=>!document.hidden,threadId:()=>session.snapshot.threadId,cursor:()=>session.snapshot.lastEventId,
   fetchEvents:(signal:AbortSignal,cursor:number,selected:string|null)=>transport.fetch('events?threadId='+encodeURIComponent(selected||''),{headers:cursor?{'last-event-id':String(cursor)}:{},signal}),
   receive:event,setCursor:(value:number)=>session.setEventCursor(value),connection:(connected:boolean,label:string)=>session.setConnection(session.snapshot.authenticated,connected,label),report:error,
-  poll:async()=>{const status=await api('status');session.applyStatus(status);controls();if(groupUI.isGroupMode())await groupUI.refresh();},
+  poll:async()=>{const status=await api('status');session.applyStatus(status);renderThreadSidebar();controls();if(groupUI.isGroupMode())await groupUI.refresh();},
   resync:async()=>{const status=await api('status');session.applyStatus(status);await list();if(session.snapshot.threadId)await hydrate();if(groupUI.isGroupMode())await groupUI.refresh();renderApprovals();controls();}
 });
 async function connect() {

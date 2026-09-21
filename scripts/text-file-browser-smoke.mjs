@@ -1,24 +1,31 @@
 import {chromium} from '@playwright/test';
 import {build} from 'esbuild';
-import {access} from 'node:fs/promises';
+import {access,readFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const chrome='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',executablePath=process.env.OMEGA_TEST_CHROME||await access(chrome).then(()=>chrome,()=>undefined);
 const bundle=await build({stdin:{contents:"import {installComposer} from './client/src/Composer.tsx';import {installGroupComposer} from './client/src/GroupComposer.tsx';installComposer();installGroupComposer();",resolveDir:new URL('..',import.meta.url).pathname},bundle:true,write:false,format:'iife',define:{'process.env.NODE_ENV':'"production"'}});
+const styles=(await Promise.all(['public/style.css','client/src/product.css','client/src/theme.css'].map(file=>readFile(new URL('../'+file,import.meta.url),'utf8')))).join('\n');
 const browser=await chromium.launch({headless:true,...(executablePath?{executablePath}:{})});
 try{for(const group of [false,true]){
   const page=await browser.newPage(),errors=[];page.setDefaultTimeout(5000);page.on('pageerror',e=>errors.push(e.message));
   await page.setContent(group?'<form id="requirement-form"></form>':'<form id="composer"></form>');
-  await page.addStyleTag({content:'.rich-paste-editor{white-space:pre-wrap}'});
+  await page.evaluate(group=>{document.documentElement.dataset.theme='light';document.documentElement.dataset.accent='amber';document.body.className='omega-product'+(group?' group-mode':'');document.body.style.cssText='display:block;padding-top:300px'},group);
+  await page.addStyleTag({content:styles+'\n.rich-paste-editor{white-space:pre-wrap}'});
   await page.addScriptTag({content:bundle.outputFiles[0].text});
   await page.evaluate(group=>{
     window.sent=[];window.uploads=[];window.reports=[];
     window.documentUploads=[];window.documentsActive=0;window.documentsPeak=0;
-    const actions={upload:async text=>{window.uploads.push(text);await new Promise(r=>setTimeout(r,100));return{id:'text-'+window.uploads.length,chars:[...text].length,bytes:new TextEncoder().encode(text).length,createdAt:Date.now(),expiresAt:Date.now()+86400000}},read:async()=>window.uploads[0],submit:async value=>{window.sent.push(value);return true},stop(){},addFiles(){return[]},removeImage(){},removeAttachment(){},openModelSettings(){},cancelReply(){},report:message=>window.reports.push(message)};
+    const actions={upload:async text=>{window.uploads.push(text);await new Promise(r=>setTimeout(r,100));return{id:'text-'+window.uploads.length,chars:[...text].length,bytes:new TextEncoder().encode(text).length,createdAt:Date.now(),expiresAt:Date.now()+86400000}},read:async()=>window.uploads[0],submit:async value=>{window.sent.push(value);return true},stop(){},addFiles(){return[]},removeImage(){},removeAttachment(){},openModelSettings(){window.modelSettingsOpened=true},openFeishuNotify:async text=>{window.notifyText=text;return window.notifyResult??false},cancelReply(){},report:message=>window.reports.push(message)};
     actions.uploadDocument=async file=>{window.documentUploads.push(file.name);window.documentsActive++;window.documentsPeak=Math.max(window.documentsPeak,window.documentsActive);try{if(file.name==='hold.pdf')await new Promise(resolve=>window.releaseDocument=resolve);if(file.name==='fail.pdf')throw Error('mock document failure');return{id:'doc-'+file.name,chars:10,bytes:10,createdAt:Date.now(),expiresAt:Date.now()+86400000};}finally{window.documentsActive--;}};
     (group?window.omegaReactGroupComposer:window.omegaReactComposer).render({scope:'test',enabled:true,sending:false,active:false,attachmentsReady:true,attachments:[],workspace:'/work',members:[{id:'member-1',name:'dramaclaw-owner',role:'owner'}],replyTo:null},actions);
   },group);
   const editor=page.locator(group?'#group-prompt':'#prompt'),send=page.locator(group?'#submit-requirement':'#send'),picker=page.getByLabel('选择附件');
   const plain=()=>editor.evaluate(node=>{const clone=node.cloneNode(true);for(const token of clone.querySelectorAll('[data-mention-id]'))token.replaceWith(document.createTextNode('@'+token.dataset.mentionName));return clone.textContent;});
+  await editor.fill('/');await editor.press('End');const menuLayout=await page.locator('.slash-command-menu').evaluate(menu=>({display:getComputedStyle(menu).display,width:menu.getBoundingClientRect().width,items:[...menu.querySelectorAll('button')].map(button=>({display:getComputedStyle(button).display,width:button.getBoundingClientRect().width,top:button.getBoundingClientRect().top,radius:getComputedStyle(button).borderRadius}))}));assert.equal(menuLayout.display,'flex');assert.equal(menuLayout.items.length,group?4:2);assert.ok(menuLayout.width>300&&menuLayout.width<=461);assert.ok(menuLayout.items.every(item=>item.display==='grid'&&item.width>=menuLayout.width-12&&item.radius!=='999px'),JSON.stringify(menuLayout));assert.ok(menuLayout.items.slice(1).every((item,index)=>item.top>menuLayout.items[index].top));
+  await editor.fill('/飞');await editor.press('End');assert.equal(await page.locator('.slash-command-menu').count(),1);await editor.press('Enter');assert.equal(await page.locator('.command-token').count(),1);assert.equal(await page.locator('.command-token').getAttribute('contenteditable'),'false');assert.equal(await page.locator('.slash-command-menu').count(),0);await page.keyboard.insertText('测试通知');await page.evaluate(()=>{window.notifyResult=true});await send.click();assert.equal(await page.evaluate(()=>window.notifyText),'测试通知');assert.equal(await editor.textContent(),'');await editor.press('ArrowUp');assert.equal(await page.locator('.command-token').count(),1);await page.locator('.command-token').click();await editor.press('Backspace');assert.equal(await page.locator('.command-token').count(),0);await editor.fill('');await page.evaluate(()=>{window.notifyResult=false});
+  if(group){await editor.fill('/讨论');await page.locator('.slash-command-menu button').click();assert.match(await page.locator('.group-mode-menu summary').getAttribute('title'),/讨论/);}
+  else{await editor.fill('/模型');await page.locator('.slash-command-menu button').click();assert.equal(await page.evaluate(()=>window.modelSettingsOpened),true);}
+  await editor.fill('');console.log(`PASS ${group?'group':'single'} slash command menu and keyboard selection`);
   if(group){
     for(const input of ['@','@dra','@@@dramaclaw-owner']){
       await editor.fill(input);await editor.press('End');await page.locator('.mention-option').click();

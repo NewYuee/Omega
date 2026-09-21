@@ -95,10 +95,14 @@ export function createTimeline(){
   let items=new Map<string,any>(),outline:any[]=[],selectedTurn:string|null=null,historyMode=false;
   let historyCursor:string|null=null,olderHistoryCursor:string|null=null,newerHistoryCursors:Array<string|null>=[],version=0,loadingVersion:number|null=null;
   let turnMetrics:any=null,metricsReceivedAt=0,metricsRevision=0,turnModel:any=null;
-  const expandedTools=new Set<string>(),recentMetrics=new Map<string,{metrics:any;receivedAt:number;revision:number}>();
+  let expandedTools=new Set<string>(),recentMetrics=new Map<string,{metrics:any;receivedAt:number;revision:number}>(),activeThreadId:string|null=null,cacheRestored=false;
+  type TimelineCache={savedAt:number;items:Map<string,any>;outline:any[];selectedTurn:string|null;historyMode:boolean;historyCursor:string|null;olderHistoryCursor:string|null;newerHistoryCursors:Array<string|null>;turnMetrics:any;metricsReceivedAt:number;metricsRevision:number;turnModel:any;expandedTools:Set<string>;recentMetrics:Map<string,{metrics:any;receivedAt:number;revision:number}>};
+  const threadCache=new Map<string,TimelineCache>(),CACHE_LIMIT=8,CACHE_TTL=10*60*1000;
   const clearMetrics=()=>{turnMetrics=null;metricsReceivedAt=Date.now();turnModel=null};
   const clearItems=()=>{items.clear();expandedTools.clear()};
   const resetHistory=()=>{selectedTurn=null;outline=[];historyMode=false;historyCursor=null;olderHistoryCursor=null;newerHistoryCursors=[]};
+  const saveThread=()=>{if(!activeThreadId||!selectedTurn)return;threadCache.delete(activeThreadId);threadCache.set(activeThreadId,{savedAt:Date.now(),items:new Map([...items].map(([id,item])=>[id,{...item}])),outline:outline.map(turn=>({...turn})),selectedTurn,historyMode,historyCursor,olderHistoryCursor,newerHistoryCursors:[...newerHistoryCursors],turnMetrics,metricsReceivedAt,metricsRevision,turnModel,expandedTools:new Set(expandedTools),recentMetrics:new Map(recentMetrics)});while(threadCache.size>CACHE_LIMIT)threadCache.delete(threadCache.keys().next().value!)};
+  const restoreThread=(threadId:string)=>{const cached=threadCache.get(threadId);if(!cached||Date.now()-cached.savedAt>CACHE_TTL){threadCache.delete(threadId);return false}threadCache.delete(threadId);threadCache.set(threadId,cached);items=new Map([...cached.items].map(([id,item])=>[id,{...item}]));outline=cached.outline.map(turn=>({...turn}));selectedTurn=cached.selectedTurn;historyMode=cached.historyMode;historyCursor=cached.historyCursor;olderHistoryCursor=cached.olderHistoryCursor;newerHistoryCursors=[...cached.newerHistoryCursors];turnMetrics=cached.turnMetrics;metricsReceivedAt=cached.metricsReceivedAt;metricsRevision=cached.metricsRevision;turnModel=cached.turnModel;expandedTools=new Set(cached.expandedTools);recentMetrics=new Map(cached.recentMetrics);return true};
   const metricsText=()=>{
     if(!selectedTurn)return'';const metrics=turnMetrics,usage=metrics?.usage;
     const elapsed=metrics?.elapsedMs==null?null:metrics.elapsedMs+(metrics.running?Math.max(0,Date.now()-metricsReceivedAt):0);
@@ -111,13 +115,13 @@ export function createTimeline(){
   };
   return{
     itemText:timelineItemText,
-    get version(){return version},get metricsRevision(){return metricsRevision},get metricsRunning(){return !!turnMetrics?.running},
+    get version(){return version},get metricsRevision(){return metricsRevision},get metricsRunning(){return !!turnMetrics?.running},get cacheRestored(){return cacheRestored},
     get selectedTurn(){return selectedTurn},get historyMode(){return historyMode},get historyCursor(){return historyCursor},
     get outline(){return outline},get olderHistoryCursor(){return olderHistoryCursor},get newerHistoryCursors(){return newerHistoryCursors},
     isCurrent(value:number){return value===version},
     view(active:boolean){return{items:[...items.values()].map(item=>({...item,open:expandedTools.has(item.id)})),active,metrics:metricsText(),historyMode,history:{outline,selectedTurn,hasOlder:!!olderHistoryCursor,hasNewer:!!newerHistoryCursors.length}}},
-    resetDeleted(){version++;loadingVersion=null;resetHistory();clearItems();recentMetrics.clear();clearMetrics()},
-    beginThread(){version++;resetHistory();clearItems();recentMetrics.clear();clearMetrics();return version},
+    resetDeleted(threadId?:string){if(threadId)threadCache.delete(threadId);version++;loadingVersion=null;activeThreadId=null;cacheRestored=false;resetHistory();clearItems();recentMetrics.clear();clearMetrics()},
+    beginThread(threadId?:string){version++;loadingVersion=null;cacheRestored=false;if(!threadId){activeThreadId=null;resetHistory();clearItems();recentMetrics.clear();clearMetrics();return version}if(activeThreadId===threadId&&selectedTurn){cacheRestored=true;return version}saveThread();activeThreadId=threadId;cacheRestored=restoreThread(threadId);if(!cacheRestored){resetHistory();clearItems();recentMetrics.clear();clearMetrics()}return version},
     selectAt(turnId:string){historyMode=true;selectedTurn=turnId;clearItems();clearMetrics();version++;return version},
     selectTurn(index:number){if(!outline[index])return false;historyMode=historyCursor!==null||index!==outline.length-1;selectedTurn=outline[index].id;clearItems();clearMetrics();version++;return true},
     latest(){if(!historyMode)return false;historyMode=false;selectedTurn=null;historyCursor=null;olderHistoryCursor=null;newerHistoryCursors=[];clearItems();clearMetrics();version++;return true},
@@ -133,7 +137,7 @@ export function createTimeline(){
       selectedTurn=result.turn?.id||null;turnModel=result.turn?.modelSettings||null;
       const newer=selectedTurn?recentMetrics.get(selectedTurn):null;
       const metric=newer&&newer.revision>requestMetricsRevision?newer:{metrics:result.turn?.metrics||null,receivedAt:Date.now()};
-      turnMetrics=metric.metrics;metricsReceivedAt=metric.receivedAt;items=new Map((result.turn?.items||[]).map((item:any)=>[item.id,item]));return true;
+      turnMetrics=metric.metrics;metricsReceivedAt=metric.receivedAt;items=new Map((result.turn?.items||[]).map((item:any)=>[item.id,item]));cacheRestored=false;return true;
     },
     applyItemPage(result:any,requestVersion:number){if(requestVersion!==version)return false;for(const item of result.turn?.items||[])items.set(item.id,item);return true},
     toggleTool(id:string,open:boolean){open?expandedTools.add(id):expandedTools.delete(id)},

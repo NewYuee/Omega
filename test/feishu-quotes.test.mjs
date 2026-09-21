@@ -42,6 +42,12 @@ test('automatic coordinator assignment preserves short card evidence in the actu
 test('private conversation receives the same quote context',async t=>{
   const f=fixture(t,async()=>original({chat_id:'oc_dm'}));f.service.receive(event({chat_id:'oc_dm',chat_type:'p2p',mentions:[],content:JSON.stringify({text:'请分析引用'})}));await f.service.tick();assert.equal(f.calls[0][0],'t');assert.match(f.calls[0][1],/请分析引用/);assert.match(f.calls[0][1],/原方案/);
 });
+test('mention-only quoted reply uses a default instruction while an unquoted mention stays ignored',async t=>{
+  const f=fixture(t);f.service.receive(event({content:JSON.stringify({text:'@bot'})}));await f.service.tick();
+  assert.equal(f.calls.length,1);assert.match(f.calls[0][1].content,/^请处理引用消息/);assert.match(f.calls[0][1].content,/原方案：先检查，再实施/);
+  f.service.receive(event({message_id:'om_mention_only',parent_id:undefined,content:JSON.stringify({text:'@bot'})}));
+  assert.equal(f.db.prepare('SELECT COUNT(*) n FROM feishu_jobs').get().n,1);
+});
 test('root-only messages and unauthorized senders never trigger quote fetch',async t=>{
   const f=fixture(t);const bad=event();bad.sender.sender_id.open_id='ou_stranger';f.service.receive(bad);await f.service.tick();assert.equal(f.reads.length,0);assert.equal(f.calls.length,0);
   f.service.receive(event({parent_id:undefined}));await f.service.tick();assert.equal(f.reads.length,0);assert.equal(f.calls.length,1);assert.doesNotMatch(f.calls[0][1].content,/直接引用/);

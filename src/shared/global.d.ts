@@ -30,6 +30,7 @@ interface Window {
   omegaReactGroupPanels?: {renderMembers(model:any,actions:any):void;renderQuestions(model:any,actions:any):void;toggle(side:'members'|'tasks'):void;getLayout():{mobile:boolean;membersOpen:boolean;questionsOpen:boolean}};
   omegaReactForms?: {open(config:any):Promise<any>};
   omegaDialogs?: {open(name:string,props:any):Promise<any>};
+  omegaFeishuNotify?: {open(text?:string,options?:{format?:'text'|'card';title?:string;source?:string}):Promise<boolean>};
   omegaReactApprovals?: {render(requests:any[],actions:{resolve(id:string|number,result:unknown):Promise<void>;report(message:string):void}):void};
   omegaReactComposer?: {render(model:any,actions:any):void;collapse():boolean};
   omegaReactGroupComposer?: {render(model:any,actions:any):void;focus():void;refill(value:{text:string;pastedTexts?:any[];mentions?:import('../../client/src/RichPasteEditor.js').MemberMention[]}):void;collapse():boolean};

@@ -1,6 +1,6 @@
 [package]
 name = "omega-client"
-version = "0.2.3"
+version = "0.2.4"
 description = "Omega personal workspace client"
 license = "Apache-2.0"
 edition = "2021"

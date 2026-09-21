@@ -80,6 +80,9 @@ main>header h1{margin:0;font-size:18px}
 @media(max-width:700px){.compose-footer{justify-content:space-between}.image-help{line-height:1.5}.image-pending{flex-basis:100px}}
 .thread-row{display:flex;align-items:center;flex:0 0 auto;min-width:0;border-radius:7px}
 .thread-row.selected{background:#293d3e;color:#fff}
+.thread-running{flex:0 0 9px;width:9px;height:9px;margin-left:7px;border-radius:50%;background:#60bd82;box-shadow:0 0 0 3px #60bd822b}
+.thread-running-count{display:block;flex-shrink:0;margin:-5px 0 7px;color:#60bd82;font-size:11px}
+.thread-row.is-running .thread-open::before{box-shadow:inset 0 0 0 1px #ffffff18,0 0 0 2px #60bd82}
 .unread-dot{display:inline-grid;place-items:center;flex:0 0 auto;min-width:18px;height:18px;padding:0 5px;margin-left:7px;border-radius:10px;background:#4eaf89;color:#071812;font-size:10px;font-weight:700;line-height:1;box-shadow:0 0 0 1px #17332b}.thread-row.selected .unread-dot,.group-row.selected .unread-dot{background:#d7fff0;box-shadow:0 0 0 1px #31564a}
 .sidebar-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}#threads .thread-open,#groups .group-row strong{display:flex;align-items:center}#threads .thread-open{flex:1 1 auto;min-width:0;max-width:none}
 #threads .thread-rename{flex:0 0 36px;padding:8px 4px;text-align:center;font-size:17px;min-height:40px}
@@ -94,6 +97,11 @@ main>header h1{margin:0;font-size:18px}
 .mobile-only{display:none}
 #menu-toggle{display:inline-flex}
 body>aside{overflow:hidden;transition:width .18s ease,padding .18s ease,opacity .14s ease}
+body>aside{position:relative;width:var(--omega-sidebar-width,260px)}
+.sidebar-resize{position:absolute;z-index:3;top:0;right:0;bottom:0;width:9px;cursor:col-resize;touch-action:none}
+.sidebar-resize:hover,.sidebar-resize:focus-visible{background:#60bd8266;outline:none}
+body.sidebar-resizing{user-select:none;cursor:col-resize}
+body.sidebar-resizing>aside{transition:none}
 body.sidebar-collapsed>aside{width:0;padding-left:0;padding-right:0;gap:0;opacity:0;pointer-events:none}
 .connection-light{width:7px;height:7px;border-radius:50%;background:#91a098;flex-shrink:0}
 .connection-light.connected{background:#235e4d}
@@ -134,6 +142,7 @@ dialog button.danger{background:#9b3c30;color:#fff}
 #conversation-drawer{position:fixed;inset:0 auto 0 0;margin:0;padding:0;border:0;border-radius:0;width:min(320px,90vw);max-width:none;height:var(--app-height,100dvh);max-height:none;background:#101d20;color:#b9cbc9}
 #conversation-drawer[open]{display:flex}
 #conversation-drawer aside{width:100%;height:100%;display:flex;flex-direction:column;padding:20px 16px;gap:18px}
+#conversation-drawer .sidebar-resize{display:none}
 #conversation-drawer .brand{margin-right:36px}
 #conversation-drawer #drawer-close{position:absolute;right:8px;top:12px;width:40px;background:transparent;color:#b9cbc9}
 #conversation-drawer #threads{flex-direction:column;overflow-x:hidden;overflow-y:auto;min-height:0}
@@ -310,7 +319,7 @@ body.group-mode main>header .header-title{flex-direction:column;align-items:flex
 .question-meta{display:flex;align-items:center;gap:5px;margin:7px 0 0 28px;color:#788d84;font-size:9px}.question-state{font-weight:650;color:#3f7663}.question-card[data-status="paused"] .question-state,.question-card[data-status="failed"] .question-state,.question-card[data-status="unknown"] .question-state{color:#9a4c40}.question-card[data-status="running"]{border-left:3px solid #65a68d}.question-responders{display:block;margin:5px 0 0 28px;color:#789087;font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .group-expand{flex:0 0 auto;min-height:32px!important;padding:5px 9px!important;border:0!important;background:transparent!important;color:#547268!important;font-size:10px}.group-expand:hover{background:#edf3f0!important}
 #requirement-form>.group-editor-heading{display:none}.group-editor-dialog{position:fixed;inset:var(--viewport-top,0) 0 auto;margin:0;width:100%;max-width:none;height:var(--app-height,100dvh);max-height:none;padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));border:0;border-radius:0;background:#eef3f1}.group-editor-dialog[open]{display:flex}.group-editor-dialog #requirement-form{display:flex;flex-direction:column;width:min(100%,1100px);height:100%;margin:auto;padding:16px;border-radius:16px}.group-editor-dialog #requirement-form>.group-editor-heading{display:flex;align-items:center;justify-content:space-between;margin:0 0 12px}.group-editor-heading h2{margin:0;font-size:16px}.group-editor-heading button{width:auto}.group-editor-dialog #group-prompt{flex:1;height:auto!important;min-height:0;max-height:none;resize:none;font-size:15px;line-height:1.7}.group-editor-dialog .group-expand{display:none}
-#requirement-form{position:relative}#requirement-form>.mention-menu{position:absolute;left:8px;right:8px;bottom:calc(100% + 7px);z-index:8;display:flex;flex-direction:column;align-items:stretch;max-height:230px;margin:0;overflow-y:auto;padding:6px;border:1px solid #cbdad3;border-radius:12px;background:rgba(255,255,255,.98);box-shadow:0 8px 28px #173d2925}#requirement-form>.mention-menu[hidden]{display:none}.mention-option{width:100%;padding:8px 10px;border:0;background:transparent;text-align:left;font-size:12px}.mention-option:hover{background:#eaf3ef}
+#composer,#requirement-form{position:relative}#requirement-form>.mention-menu{position:absolute;left:8px;right:8px;bottom:calc(100% + 7px);z-index:8;display:flex;flex-direction:column;align-items:stretch;max-height:230px;margin:0;overflow-y:auto;padding:6px;border:1px solid #cbdad3;border-radius:12px;background:rgba(255,255,255,.98);box-shadow:0 8px 28px #173d2925}#requirement-form>.mention-menu[hidden]{display:none}.mention-option{width:100%;padding:8px 10px;border:0;background:transparent;text-align:left;font-size:12px}.mention-option:hover{background:#eaf3ef}
 
 @media(max-width:800px){.group-panel:first-child{padding-left:12px}.group-panel.task-panel{padding-right:12px}.group-editor-dialog #requirement-form{width:100%;height:100%;margin:0;padding:12px}.question-card{margin-bottom:6px}}
 @media(max-width:800px){

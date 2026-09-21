@@ -26,7 +26,7 @@ html[data-theme] body.omega-product button{background:var(--raised);border-color
 html[data-theme] body.omega-product button:hover{background:var(--tint)}
 html[data-theme] body.omega-product :is(#send,#submit-requirement,#new,#new-group,#open-control-center,.omega-center-section-title button,.omega-center-form>button,.omega-system-actions button,.omega-integrations article>button,.appearance-preview>button){background:var(--accent);color:#fff;border-color:var(--accent)}
 html[data-theme] body.omega-product :is(.icon-button,.thread-open,.thread-rename,.thread-delete,.group-row,.side-tabs button,.omega-center>nav button,.mention-option,.question-link,.copy-message){background:transparent;color:var(--text)}
-html[data-theme] body.omega-product :is(.thread-row.selected,.group-row.selected,.omega-center>nav button.selected,.mention-token,.pasted-content-token){background:var(--tint);border-color:var(--border);color:var(--accent-text)}
+html[data-theme] body.omega-product :is(.thread-row.selected,.group-row.selected,.omega-center>nav button.selected,.mention-token,.command-token,.pasted-content-token){background:var(--tint);border-color:var(--border);color:var(--accent-text)}
 html[data-theme] body.omega-product :is(.markdown-body a,.reference-link,.group-message-actions>.reference-link,.code-toolbar button,.appearance-preview a){color:var(--accent-text)!important}
 html[data-theme] body.omega-product :is(.mention-option,.mention-option small){color:var(--text)!important}
 html[data-theme] body.omega-product .mention-option[aria-selected="true"]{background:var(--tint)!important}

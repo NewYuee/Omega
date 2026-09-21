@@ -15,6 +15,7 @@ import {installNotice} from './Notice.js';
 import {installSessionRuntime} from './SessionRuntime.js';
 import {installTypeToCompose} from './type-to-compose.js';
 import {installRegionNavigation} from './region-navigation.js';
+import {installFeishuNotifyDialog} from './FeishuNotifyDialog.js';
 
 document.body.classList.add('omega-product');
 installAppState();
@@ -29,6 +30,7 @@ installFormLayer();
 installApprovalPanel();
 installComposer();
 installGroupComposer();
+installFeishuNotifyDialog();
 installTypeToCompose();
 installRegionNavigation();
 const host=document.createElement('div');host.id='omega-product-layer';document.body.append(host);createRoot(host).render(<><CommandPalette/><ControlCenter/></>);

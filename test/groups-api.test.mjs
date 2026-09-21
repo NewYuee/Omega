@@ -26,6 +26,7 @@ createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line)
  else if(m.method==='turn/start'){
    const thread=threads.get(m.params.threadId),id='turn-'+(++starts),input=(m.params.input||[]).map(part=>part.text||'').join('');
    if(!m.params.input.some(part=>part.type==='localImage')){emit({id:m.id,error:{message:'group image was not forwarded'}});return;}
+   if(!['PROJECT_OVERVIEW','PROJECT_DECISION','PROJECT_TASK','PROJECT_VERIFICATION'].every(value=>input.includes(value))||input.includes('PROJECT_CANDIDATE')){emit({id:m.id,error:{message:'confirmed project state missing or candidate leaked'}});return;}
    if(thread.id===member&&!m.params.cwd){emit({id:m.id,error:{message:'member execution cwd was not forwarded'}});return;}\n   let answer=input.includes('任务计划')?'':input.includes('审核成员')?'<omega-review>{"decision":"pass","summary":"验证证据充分"}</omega-review>':input.includes('最终交付报告')?'# 交付报告\\n功能已完成并测试。':'完成内容：实现成功。\\n验证：测试通过。';
    if(input.includes('任务计划')){const match=input.match(/"id": "([^"]+)"/);answer='<omega-plan>'+JSON.stringify({summary:'实现并验证需求',tasks:[{memberId:match[1],title:'开发与测试',objective:'实现需求并执行测试',acceptance:'测试通过'}]})+'</omega-plan>';}
    const turn={id,status:'interrupted',items:[{id:'a-'+id,type:'agentMessage',text:answer}]};thread.turns.push(turn);emit({method:'turn/started',params:{threadId:thread.id,turn:{id,status:'inProgress'}}});result={turn:{id}};
@@ -40,6 +41,10 @@ createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line)
     let group=(await call({action:'create',name:'研发组',cwd:'/tmp',description:'测试群组'})).group;
     assert.match(group.coordinatorThreadId,/^[a-f0-9-]{36}$/);
     const coordinatorThreadId=group.coordinatorThreadId;
+    const project=await call({action:'create',name:'Continuity'},'projects');
+    await call({action:'link',projectId:project.id,kind:'group',target:group.id},'projects');
+    for(const kind of ['overview','decision','task','verification'])await call({action:'save',projectId:project.id,kind,status:'confirmed',title:'PROJECT_'+kind.toUpperCase(),body:'状态、依据、下一步和验证范围',source:{type:'manual',excerpt:'测试证据'}},'projects');
+    await call({action:'save',projectId:project.id,kind:'decision',status:'candidate',title:'PROJECT_CANDIDATE',body:'未确认建议'},'projects');
     group=(await call({action:'setConcurrency',groupId:group.id,maxConcurrency:4})).group;
     assert.equal(group.limits.maxConcurrency,4);
     group=(await call({action:'addMember',groupId:group.id,threadId:'11111111-1111-4111-8111-111111111111',name:'开发',role:'开发'})).group;

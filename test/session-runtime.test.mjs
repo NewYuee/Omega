@@ -28,3 +28,26 @@ test('timeline state owns hydration, pagination, deltas and metrics',async()=>{
   assert.equal(timeline.selectedTurn,'old');
   assert.equal(timeline.historyCursor,'older');
 });
+
+test('timeline restores a bounded in-memory snapshot while a revisited thread refreshes',async()=>{
+  const{createTimeline}=await loadRuntime(),timeline=createTimeline();
+  let version=timeline.beginThread('thread-a'),request=timeline.hydrationRequest();
+  timeline.applyHydration({outline:[{id:'a1',label:'问题 A'}],turn:{id:'a1',items:[{id:'answer-a',type:'agentMessage',pageText:'缓存回答'}]}},version,request.metricsRevision);
+  timeline.finishHydration(version);timeline.toggleTool('tool-a',true);
+
+  version=timeline.beginThread('thread-b');
+  assert.equal(timeline.cacheRestored,false);
+  request=timeline.hydrationRequest();
+  timeline.applyHydration({outline:[{id:'b1',label:'问题 B'}],turn:{id:'b1',items:[{id:'answer-b',type:'agentMessage',pageText:'另一个会话'}]}},version,request.metricsRevision);
+  timeline.finishHydration(version);
+
+  version=timeline.beginThread('thread-a');
+  assert.equal(timeline.cacheRestored,true);
+  assert.equal(timeline.selectedTurn,'a1');
+  assert.equal(timeline.view(false).items[0].pageText,'缓存回答');
+  request=timeline.hydrationRequest();
+  assert.equal(request.version,version);
+  assert.equal(timeline.applyHydration({outline:[{id:'a1',label:'问题 A'}],turn:{id:'a1',items:[{id:'answer-a',type:'agentMessage',pageText:'服务端新回答'}]}},version,request.metricsRevision),true);
+  assert.equal(timeline.cacheRestored,false);
+  assert.equal(timeline.view(false).items[0].pageText,'服务端新回答');
+});

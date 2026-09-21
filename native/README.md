@@ -1,4 +1,4 @@
-# Omega Android App · v0.2.3
+# Omega Android App · v0.2.4
 
 Omega 的 Tauri 工程现在只承担移动端容器职责。Windows 和 macOS 桌面客户端统一使用 Electron，不再提供 Tauri 桌面开发、`.app` 或 NSIS 构建入口。
 

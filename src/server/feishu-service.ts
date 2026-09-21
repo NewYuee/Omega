@@ -48,7 +48,10 @@ export class FeishuService{
     if(inputError)text='[未支持或无法解析的消息]';
     if(typeof text!=='string')return;
     for(const mention of m.mentions||[])if(mention.id?.open_id===this.config.botOpenId&&typeof mention.key==='string')text=text.replaceAll(mention.key,'');
-    text=text.trim();if(!text||text.length>12000)return;
+    text=text.trim();
+    const hasValidParent=typeof m.parent_id==='string'&&/^om_[\w-]{1,100}$/.test(m.parent_id);
+    if(!text&&hasValidParent)text='请处理引用消息';
+    if(!text||text.length>12000)return;
     const pending=Number(this.store.db.prepare("SELECT COUNT(*) n FROM feishu_jobs WHERE status IN ('queued','dispatching','running','cancel-requested')").get()?.n);
     if(pending>=100)return;
     this.store.db.exec('SAVEPOINT feishu_receive');try{
