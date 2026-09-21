@@ -8,7 +8,7 @@ export function normalizeServer(value, allowHttp = false) {
   return url.origin;
 }
 export function apiUrl(serverUrl, route) {
-  if (typeof route !== 'string' || !/^\/api\/[a-z-]+(?:\/[a-zA-Z0-9_-]+)?(?:\?[^#]*)?$/.test(route)) throw new Error('不允许的 API 地址');
+  if (typeof route !== 'string' || !/^\/api\/[a-z-]+(?:\/[a-zA-Z0-9_-]+)*(?:\?[^#]*)?$/.test(route)) throw new Error('不允许的 API 地址');
   const target = new URL(route, serverUrl);
   if (target.origin !== serverUrl) throw new Error('不允许跨服务器请求');
   return target.href;
