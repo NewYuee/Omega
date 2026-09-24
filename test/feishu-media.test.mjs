@@ -10,7 +10,7 @@ import {zipSync,strToU8} from 'fflate';
 import {ImageStore,imageInfo} from '../src/server/images.ts';
 import {PastedTextStore} from '../src/server/pasted-content.ts';
 import {prepareManagedInput} from '../src/server/managed-input.ts';
-import {feishuResourceImporter,downloadFeishuResource} from '../src/server/feishu-resources.ts';
+import {feishuResourceImporter,downloadFeishuResource,requestFeishuResource} from '../src/server/feishu-resources.ts';
 import {resolveFeishuQuoteChain,quoteAttachmentIds,withFeishuQuoteChain,quoteSnapshot,MAX_FEISHU_QUOTE_DEPTH,MAX_FEISHU_QUOTE_BYTES} from '../src/server/feishu-quotes.ts';
 import {FeishuService} from '../src/server/feishu-service.ts';
 import {FeishuStore} from '../src/server/feishu-store.ts';
@@ -112,6 +112,13 @@ test('download enforces declared size, stream size, completeness and timeout; la
   const hanging=new Readable({read(){}});await assert.rejects(downloadFeishuResource(async()=>({getReadableStream:()=>hanging}),8,5),/超时/);assert.equal(hanging.destroyed,true);
   let release;const waiting=new Promise(resolve=>{release=resolve});await assert.rejects(downloadFeishuResource(()=>waiting,8,5),/超时/);const late=Readable.from([Buffer.from('x')]);release({getReadableStream:()=>late});await new Promise(resolve=>setImmediate(resolve));assert.equal(late.destroyed,true);
   await assert.rejects(downloadFeishuResource(async()=>{throw Error('SECRET')},8),error=>!error.message.includes('SECRET'));
+});
+test('card image resources retry with Feishu file type while files never broaden their type',async()=>{
+  const calls=[],response={getReadableStream:()=>Readable.from([png])};
+  assert.equal(await requestFeishuResource({messageId:'om_card',key:'img_card',kind:'image',name:'引用图片'},async type=>{calls.push(type);if(type==='image')throw Error('HTTP 400');return response}),response);
+  assert.deepEqual(calls,['image','file']);calls.length=0;
+  await assert.rejects(requestFeishuResource({messageId:'om_file',key:'file_test',kind:'file',name:'x.txt'},async type=>{calls.push(type);throw Error('denied')}),/denied/);
+  assert.deepEqual(calls,['file']);
 });
 test('resource importer rejects executable/archive, forged image, binary and non-UTF8 text',async t=>{
   const f=await mediaFixture(t),base={messageId:'om_file',key:'file_test',kind:'file',name:'x.exe'};

@@ -4,6 +4,7 @@ import {createRoot,type Root} from 'react-dom/client';
 import {RichPasteEditor,type RichPasteEditorHandle,type RichPastePayload} from './RichPasteEditor.js';
 import type {PastedTextTransport} from './pasted-content.js';
 import {SlashCommandMenu,slashQuery,type SlashCommand} from './SlashCommandMenu.js';
+import {useAppState} from './AppState.js';
 
 interface Attachment{key:string;id?:string;index:number;name:string;status:string;url:string;ready:boolean}
 interface Model{scope?:string;sending:boolean;enabled:boolean;active:boolean;attachmentsReady:boolean;attachments:Attachment[];workspace:string}
@@ -11,6 +12,7 @@ interface Actions extends PastedTextTransport{submit(value:RichPastePayload):Pro
 
 import {ComposerIcon as Icon} from './ComposerIcon.js';
 function Composer({model,actions}:{model:Model;actions:Actions}){
+  const selectedSkill=useAppState().selectedSkill;
   const [draft,setDraft]=useState('');
   const [uploadingPaste,setUploadingPaste]=useState(false);
   const [expanded,setExpanded]=useState(false);
@@ -36,6 +38,7 @@ function Composer({model,actions}:{model:Model;actions:Actions}){
   return <>
     <div className="editor-heading"><h2>专注编辑</h2><button id="editor-close" type="button" className="secondary" onClick={()=>setExpanded(false)}>收起编辑</button></div>
     <input ref={filePicker} aria-label="选择附件" type="file" accept={'image/png,image/jpeg,image/webp,'+TEXT_FILE_ACCEPT+','+DOCUMENT_ACCEPT} multiple hidden onChange={event=>{ingest(Array.from(event.target.files||[]));event.target.value=''}}/>
+    {selectedSkill&&selectedSkill.threadId===model.scope&&<div className="composer-skill-chip">本次使用 Skill：{selectedSkill.name}<button type="button" aria-label="移除选中的 Skill" onClick={()=>window.omegaAppState?.patch({selectedSkill:null})}>×</button></div>}
     {!!shownCommands.length&&dismissedCommand!==draft&&<SlashCommandMenu commands={shownCommands} active={activeCommand} choose={chooseCommand}/>}
     <RichPasteEditor scope={model.scope} ref={prompt} id="prompt" label="消息" placeholder="今天想推进什么？输入 / 查看操作" disabled={locked} transport={actions} report={actions.report} images={model.attachments} onRemoveImage={actions.removeImage} onFiles={ingest} onShortcut={event=>{if(!shownCommands.length||dismissedCommand===draft)return false;if(event.key==='Escape'){event.preventDefault();setDismissedCommand(draft);return true}if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();setActiveCommand(value=>(value+(event.key==='ArrowDown'?1:-1)+shownCommands.length)%shownCommands.length);return true}if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();chooseCommand(shownCommands[activeCommand%shownCommands.length]);return true}return false}} onEnter={()=>void submit()} onChange={state=>{setDraft(state.text);setUploadingPaste(state.uploading)}}/>
     <div className="compose-footer">

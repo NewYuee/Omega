@@ -70,7 +70,7 @@ export function initGroups({getKey,api,rpc,pastedText,error,closeDrawer,openThre
 
   function render(){
     const group=current,req=group.requirement;renderGroupHeader(group);
-    const busy=new Set<string>(group.requirements?.flatMap((requirement:any)=>requirement.tasks||[]).filter((task:any)=>task.status==='running').map((task:any)=>task.memberId));window.omegaReactGroupPanels?.renderMembers({members:group.members,busy,removable:!req||['completed','accepted','cancelled'].includes(req.status),summary:req?.plan?.summary||group.summary||'协调者会持续整理目标、约束和进度。',active:true},{edit:openMemberEdit,open:openThread,remove:(memberId:string)=>act({action:'removeMember',memberId},'移出成员')});
+    const busy=new Set<string>(group.requirements?.flatMap((requirement:any)=>requirement.tasks||[]).filter((task:any)=>task.status==='running').map((task:any)=>task.memberId));window.omegaReactGroupPanels?.renderMembers({members:group.members,coordinatorThreadId:group.coordinatorThreadId,coordinatorThreadName:group.coordinatorThreadName,coordinatorOwned:group.coordinatorOwned,busy,removable:!req||['completed','accepted','cancelled'].includes(req.status),summary:(req&&['running','queued','plan_drafting','finalizing'].includes(req.status)?req.plan?.summary:null)||group.memorySummary||group.summary||'协调者会持续整理目标、约束和进度。',active:true,groupId:group.id},{edit:openMemberEdit,editCoordinator:openCoordinatorEdit,open:openThread,remove:(memberId:string)=>act({action:'removeMember',memberId},'移出成员'),memoryList:(before?:string)=>api('group-memory?'+new URLSearchParams({groupId:group.id,...(before?{before}:{})})),memoryGet:(id:string)=>api('group-memory?'+new URLSearchParams({groupId:group.id,id})),memoryHistory:(id:string)=>api('group-memory?'+new URLSearchParams({groupId:group.id,id,history:'1'})),memorySave:(entry:any)=>api('group-memory',{groupId:group.id,...entry})});
     room.render(group);renderGroupComposer();
   }
 
@@ -85,7 +85,7 @@ export function initGroups({getKey,api,rpc,pastedText,error,closeDrawer,openThre
 
   async function deleteCurrentGroup(){
     if(acting||!current)return;
-    if(!confirm(`删除群组“${current.name}”？\n\n群组需求、任务和协作记录会被删除，专用协调者会话也会删除；成员会话和项目文件会保留。`))return;
+    if(!confirm(`删除群组“${current.name}”？\n\n群组需求、任务和协作记录会被删除，${current.coordinatorOwned?'Omega 专用协调者会话也会删除；':'你指定的协调者会话会保留；'}成员会话和项目文件会保留。`))return;
     acting=true;error('');renderGroupHeader();
     try{await api('groups',{view:'room',action:'deleteGroup',groupId:current.id});groupId=null;requirementId=null;current=null;sessionStorage.removeItem('omega-group');sessionStorage.removeItem('omega-requirement');await refresh();}
     catch(cause){error(`删除群组失败：${errorMessage(cause)}`);}
@@ -101,6 +101,16 @@ export function initGroups({getKey,api,rpc,pastedText,error,closeDrawer,openThre
   }
 
   async function openMemberEdit(member:any){if(!current)return;try{const result=await rpc('thread/list',{limit:100,sourceKinds:[]}),bound=new Set<string>(current.members.filter((item:any)=>item.id!==member.id).map((item:any)=>item.threadId)),available=result.data.filter((thread:any)=>thread.id!==current.coordinatorThreadId&&!bound.has(thread.id));if(!available.some((thread:any)=>thread.id===member.threadId))available.unshift({id:member.threadId,name:'当前会话不可用',cwd:member.cwd});await openDialog('member',{editing:true,member,threads:available,onSubmit:(values:Record<string,unknown>)=>act({action:'updateMember',memberId:member.id,requirementId:current?.requirement?.id,...values},'修改成员').then(ok=>{if(!ok)throw Error('修改成员失败')})});}catch(cause){error(`读取可用会话失败：${errorMessage(cause)}`);}}
+
+  async function openCoordinatorEdit(){
+    if(!current)return;
+    try{
+      const expectedThreadId=current.coordinatorThreadId,result=await rpc('thread/list',{limit:100,sourceKinds:[]}),members=new Set(current.members.map((member:any)=>member.threadId));
+      const available=result.data.filter((thread:any)=>thread.id===expectedThreadId||!members.has(thread.id));
+      if(!available.some((thread:any)=>thread.id===expectedThreadId))available.unshift({id:expectedThreadId,name:current.coordinatorThreadName||'当前协调者会话'});
+      await openDialog('coordinator',{threadId:expectedThreadId,threads:available,onSubmit:(values:Record<string,unknown>)=>act({action:'setCoordinator',expectedThreadId,threadId:values.threadId,requirementId:current?.requirement?.id},'指定协调者').then(ok=>{if(!ok)throw Error('协调者未更新')})});
+    }catch(cause){error(`读取协调者候选会话失败：${errorMessage(cause)}`);}
+  }
 
   const newGroup=()=>openDialog('createGroup',{cwd:getWorkspace(),onSubmit:async(values:Record<string,unknown>)=>{const response=await api('groups',{view:'room',action:'create',...values});current=response.group;groupId=current.id;sessionStorage.setItem('omega-group',current.id);render();await list();}}).catch(cause=>error(errorMessage(cause)));
   return {switchMode,newGroup,refresh,applyReadState:(state:any)=>{unreadGroups.clear();unreadGroupCounts.clear();for(const id of state?.unread?.groups||[]){unreadGroups.add(id);unreadGroupCounts.set(id,state?.counts?.groups?.[id]||1);}if(listedGroups.length)window.omegaReactWorkspace?.renderGroups(listedGroups.map(withUnread),groupId,{open:select,status:label});},onReadState:(params:any)=>{if(params.scope==='group'){unreadGroups.delete(params.id);unreadGroupCounts.delete(params.id);if(listedGroups.length)window.omegaReactWorkspace?.renderGroups(listedGroups.map(withUnread),groupId,{open:select,status:label});}},onUnread:(params:any)=>{if(params.scope==='group'){unreadGroups.add(params.id);unreadGroupCounts.set(params.id,params.count||1);if(listedGroups.length)window.omegaReactWorkspace?.renderGroups(listedGroups.map(withUnread),groupId,{open:select,status:label});}},onGroupUpdated:(id:string)=>{if(mode==='groups'&&(!groupId||id===groupId)&&!refreshTimer)refreshTimer=setTimeout(()=>{refreshTimer=null;refresh().catch(cause=>error(errorMessage(cause)));},200);},onGroupDeleted:(id:string)=>{unreadGroups.delete(id);unreadGroupCounts.delete(id);if(id===groupId){groupId=null;requirementId=null;current=null;sessionStorage.removeItem('omega-group');sessionStorage.removeItem('omega-requirement');}if(mode==='groups')setTimeout(()=>refresh().catch(cause=>error(errorMessage(cause))),loading?120:0);},isGroupMode:()=>mode==='groups'};

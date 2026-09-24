@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -8,7 +8,8 @@ import { once } from 'node:events';
 import sharp from 'sharp';
 
 test('group API creates coordinator, binds existing session and completes confirmed workflow',async()=>{
-  const state=await mkdtemp(join(tmpdir(),'omega-groups-api-')),fake=join(state,'codex.mjs'),port=14327;
+  const state=await mkdtemp(join(tmpdir(),'omega-groups-api-')),fake=join(state,'codex.mjs'),workspaceRoot=join(state,'workspace'),port=14327;
+  await mkdir(workspaceRoot);
   await writeFile(fake,`#!/usr/bin/env node
 import {createInterface} from 'node:readline';import {randomUUID} from 'node:crypto';
 const emit=x=>process.stdout.write(JSON.stringify(x)+'\\n');
@@ -34,10 +35,16 @@ createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line)
  }
  emit({id:m.id,result});
 });`,{mode:0o700});
-  const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,PORT:String(port),OMEGA_HOST:'127.0.0.1',OMEGA_STATE_DIR:state,OMEGA_ACCESS_TOKEN:'group-api-test-key',OMEGA_CODEX_BIN:fake,OMEGA_WORKSPACE:'/tmp'},stdio:['ignore','pipe','inherit']});
+  const child=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{...process.env,PORT:String(port),OMEGA_HOST:'127.0.0.1',OMEGA_STATE_DIR:state,OMEGA_ACCESS_TOKEN:'group-api-test-key',OMEGA_CODEX_BIN:fake,OMEGA_WORKSPACE:workspaceRoot},stdio:['ignore','pipe','inherit']});
   try{
     await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('startup timeout')),10000);child.stdout.on('data',data=>{if(String(data).includes('Omega:')){clearTimeout(timer);resolve();}});child.on('error',reject);});
     const call=async(data,path='groups')=>{const response=await fetch(`http://127.0.0.1:${port}/api/${path}`,{method:data?'POST':'GET',headers:{authorization:'Bearer group-api-test-key','content-type':'application/json'},body:data?JSON.stringify(data):undefined});const value=await response.json();assert.equal(response.status,200,value.error);return value;};
+    const external=(await call({method:'thread/start',params:{cwd:state}},'rpc')).thread;
+    assert.equal(external.cwd,await realpath(state));
+    for(const cwd of [fake,join(state,'missing')]){
+      const response=await fetch(`http://127.0.0.1:${port}/api/rpc`,{method:'POST',headers:{authorization:'Bearer group-api-test-key','content-type':'application/json'},body:JSON.stringify({method:'thread/start',params:{cwd}})});
+      assert.notEqual(response.status,200);
+    }
     let group=(await call({action:'create',name:'研发组',cwd:'/tmp',description:'测试群组'})).group;
     assert.match(group.coordinatorThreadId,/^[a-f0-9-]{36}$/);
     const coordinatorThreadId=group.coordinatorThreadId;

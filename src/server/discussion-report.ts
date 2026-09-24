@@ -1,5 +1,5 @@
 type EvidenceSource={taskId:string;member:string;text:string};
-type Issue={kind:'discussion'|'verification'|'user-decision';question:string;reason:string;nextStep:string};
+type Issue={kind:'discussion'|'verification'|'user-decision';question:string;reason:string;nextStep:string;responderTaskIds?:string[]};
 export type DiscussionReport={agreed:string[];issues:Issue[];recommendation:string;nextSteps:string[];continueDiscussion:boolean;focus:string;closingReason:string};
 
 // Only raw member replies can establish attribution; previous summaries are not evidence.
@@ -23,7 +23,13 @@ export function parseDiscussionReport(text:string,sources:EvidenceSource[]=[]):D
   });
   const issues:Issue[]=array(value.issues).map(item=>{
     if(!['discussion','verification','user-decision'].includes(item.kind))throw Error('必须区分方案分歧、事实验证与用户决策');
-    return{kind:item.kind,question:string(item.question),reason:string(item.reason),nextStep:string(item.nextStep)};
+    const issue:Issue={kind:item.kind,question:string(item.question),reason:string(item.reason),nextStep:string(item.nextStep)};
+    if(item.kind==='discussion'){
+      const responders=array(item.responderTaskIds,3).map(id=>string(id,120));
+      if(!responders.length||new Set(responders).size!==responders.length||responders.some(id=>!sources.some(source=>source.taskId===id)))throw Error('聚焦讨论成员必须引用有效任务');
+      issue.responderTaskIds=responders;
+    }
+    return issue;
   });
   const nextSteps=array(value.nextSteps).map(item=>string(item));if(!nextSteps.length)throw Error('讨论小结缺少下一步');
   const open=issues.filter(issue=>issue.kind==='discussion');
@@ -31,9 +37,9 @@ export function parseDiscussionReport(text:string,sources:EvidenceSource[]=[]):D
   return{agreed,issues,recommendation:string(value.recommendation,3000),nextSteps,continueDiscussion:open.length>0,focus:open.map(issue=>`${issue.question}；本轮需要：${issue.nextStep}`).join('\n'),closingReason:string(value.closingReason,2000)};
 }
 
-export function discussionReportText(report:DiscussionReport,kind:string,round:number){
+export function discussionReportText(report:DiscussionReport,kind:string,round:number,maxRounds?:number){
   const list=(items:string[],empty:string)=>items.length?items.map(s=>`- ${s}`).join('\n'):empty;
   const issues=(type:Issue['kind'])=>list(report.issues.filter(item=>item.kind===type).map(item=>`${item.question}\n  - 分类依据：${item.reason}\n  - 建议：${item.nextStep}`),'无明确记录。');
-  const state=kind==='paused'?'预算已暂停；仍未解决的问题保留，可追加预算继续。':kind==='round'?`仍有值得讨论的方案取舍，下一轮只围绕：\n${report.focus}`:report.continueDiscussion?'仍有未解决的方案分歧，但没有可接续的成员任务，本轮停止；不代表已达成共识。':'没有待继续辩论的方案分歧，本轮讨论收尾；待验证项和用户决策仍未完成。';
-  return `### ${kind==='paused'?'讨论阶段小结（预算暂停）':kind==='final'?'讨论结论':'讨论轮次小结'} · 第 ${round} 轮\n\n**成员观点与原文依据（不代表全员共识）**\n${list(report.agreed,'没有足够原文依据归纳成员共同观点。')}\n\n**仍需讨论的方案分歧**\n${issues('discussion')}\n\n**待验证事实**\n${issues('verification')}\n\n**需要用户决定**\n${issues('user-decision')}\n\n**主持人推荐方案与理由（不是成员投票结果）**\n${report.recommendation}\n\n**收尾判断**\n${state}\n主持人判断依据：${report.closingReason}\n\n**下一步建议（尚未派发或执行）**\n${list(report.nextSteps,'请补充目标。')}\n\n讨论不代表已执行或已获得实施授权。*pass 仅表示没有补充，不作为赞成票。*`;
+  const state=kind==='paused'?'预算已暂停；仍未解决的问题保留，可追加预算继续。':kind==='round'?`仍有值得讨论的方案取舍，下一轮只围绕：\n${report.focus}`:report.continueDiscussion?(maxRounds&&round>=maxRounds?'已达到本次讨论轮次上限，仍有未解决的方案分歧；不代表已达成共识。':'本轮没有可接续的成员任务，仍有未解决的方案分歧；不代表已达成共识。'):'没有待继续辩论的方案分歧，本轮讨论收尾；待验证项和用户决策仍未完成。';
+  return `### ${kind==='paused'?'讨论阶段小结（预算暂停）':kind==='final'?'讨论结论':'讨论轮次小结'} · 第 ${round} 轮\n\n**当前建议（主持人判断，不是成员投票结果）**\n${report.recommendation}\n\n**下一步建议（尚未派发或执行）**\n${list(report.nextSteps,'请补充目标。')}\n\n**仍需讨论的方案分歧**\n${issues('discussion')}\n\n**待验证事实**\n${issues('verification')}\n\n**需要用户决定**\n${issues('user-decision')}\n\n**成员观点与原文依据（不代表全员共识）**\n${list(report.agreed,'没有足够原文依据归纳成员共同观点。')}\n\n**收尾判断**\n${state}\n主持人判断依据：${report.closingReason}\n\n讨论不代表已执行或已获得实施授权。*pass 仅表示没有补充，不作为赞成票。*`;
 }

@@ -10,13 +10,35 @@ const config={enabled:true,appId:'cli_1234567890abcdef',appSecret:'secret',botOp
 
 function fixture(){
   const sent=[];
-  const client={im:{
+  const employee={base_info:{employee_id:'ou_search',name:{name:{default_value:'可搜索联系人'}}}};
+  const client={directory:{v1:{employee:{search:async()=>({code:0,data:{employees:[employee]}}),mget:async({data})=>data.employee_ids[0]==='ou_search'?{code:0,data:{employees:[employee]}}:{code:0,data:{employees:[]}}}}},im:{
     chat:{get:async({path})=>({code:0,data:{name:path.chat_id==='oc_one'?'研发群':'发布群'}})},
     chatMembers:{get:async({path})=>({code:0,data:{items:path.chat_id==='oc_one'?[{member_id:'ou_same',name:'张三'},{member_id:'ou_one',name:'李四'}]:[{member_id:'ou_same',name:'张三'},{member_id:'ou_two',name:'王五'}],has_more:false}})},
     message:{create:async input=>{sent.push(input);return{code:0,data:{message_id:'om_sent'}}}}
   }};
   return{notifier:new FeishuNotifier(config,client),sent};
 }
+
+test('directory contacts can be searched and messaged without an existing binding',async()=>{
+  const{notifier,sent}=fixture();
+  assert.deepEqual((await notifier.contacts('可搜索')).contacts,[{openId:'ou_search',name:'可搜索联系人'}]);
+  await notifier.send({targetType:'contact',contactOpenId:'ou_search',text:'私信通知',submissionId:'12345678-1234-1234-1234-123456789abc'});
+  assert.equal(sent[0].params.receive_id_type,'open_id');assert.equal(sent[0].data.receive_id,'ou_search');assert.equal(JSON.parse(sent[0].data.content).text,'私信通知');
+});
+
+test('direct notifications revalidate the contact before sending',async()=>{
+  const{notifier,sent}=fixture();await assert.rejects(notifier.send({targetType:'contact',contactOpenId:'ou_missing',text:'不应发送'}),/不在应用可见范围/);assert.equal(sent.length,0);
+});
+
+test('contact search reports the required directory permission',async()=>{
+  const{notifier}=fixture();notifier.client.directory.v1.employee.search=async()=>{throw{response:{data:{code:99991672}}}};
+  await assert.rejects(notifier.contacts('刘洋'),/directory:employee:search/);
+});
+
+test('contact search reports missing employee detail permission',async()=>{
+  const{notifier}=fixture();notifier.client.directory.v1.employee.search=async()=>({code:0,data:{employees:[{base_info:{employee_id:'ou_search',name:{}}}]}});
+  await assert.rejects(notifier.contacts('刘洋'),/directory:employee:read/);
+});
 
 test('notification targets are scoped by bound chat even when a person belongs to both groups',async()=>{
   const{notifier,sent}=fixture();

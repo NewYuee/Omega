@@ -10,6 +10,7 @@ import { createPastedTextTransport } from './pasted-content.js';
 import {createChatHistoryPager} from './chat-history-pager.js';
 import type {RichPastePayload} from './RichPasteEditor.js';
 import { isThreadWriterConflict,threadWriterBusyMessage } from '../../src/shared/thread-errors.js';
+import {appStore} from './AppState.js';
 type JsonRecord = Record<string, any>;
 type ControllerError = Error & {status?:number;code?:string;threadId?:string};
 type PendingSubmission = {fingerprint:string;id:string;settingsRevision:number};
@@ -238,17 +239,19 @@ function openNewThread(){return openDialog('newThread',{cwd:session.snapshot.ser
 patchState({shellActions:{switchMode:(mode:'chats'|'groups')=>groupUI.switchMode(mode),newAction:()=>groupUI.isGroupMode()?groupUI.newGroup():openNewThread(),openSettings}});
 async function sendMessage(value:RichPastePayload) {
   const text=value.text.trim(),pasteIds=value.pasteIds,imageIds=attachments.ids, target=session.snapshot.threadId;
+  const selectedSkill=appStore.getSnapshot().selectedSkill,skillId=selectedSkill&&selectedSkill.threadId===target?selectedSkill.id:undefined;
   if ((!text && !imageIds.length) || !target || sending || !attachments.ready || session.snapshot.active[target]) return false;
   sending = true;
   let requested = false;
   try {
     attachments.refresh();jumpLatest();error('');controls();
-    const fingerprint = JSON.stringify({target,text,imageIds,pasteIds});
+    const fingerprint = JSON.stringify({target,text,imageIds,pasteIds,skillId});
     if (pendingSubmission?.fingerprint !== fingerprint) pendingSubmission = {fingerprint,id:submissionId(),settingsRevision:preferences.revision};
     const id = pendingSubmission.id;
     requested = true;
-    await rpc('turn/start',{threadId:target,input:text ? [{type:'text',text}] : []},{submissionId:id,imageIds,pasteIds,settingsRevision:pendingSubmission.settingsRevision});
+    await rpc('turn/start',{threadId:target,input:text ? [{type:'text',text}] : []},{submissionId:id,imageIds,pasteIds,settingsRevision:pendingSubmission.settingsRevision,skillId});
     pendingSubmission = null;
+    if(skillId&&appStore.getSnapshot().selectedSkill?.id===skillId)appStore.patch({selectedSkill:null});
     if (target === session.snapshot.threadId) attachments.clear();
     return true;
   } catch(cause) {

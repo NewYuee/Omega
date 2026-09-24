@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {GroupStore} from '../groups-store.mjs';
 import {GroupOrchestrator,memberTaskPrompt} from '../src/server/group-orchestrator.ts';
 import {parseDiscussionReport} from '../src/server/discussion-flow.ts';
-const report=(continuing=false)=>`<omega-discussion>${JSON.stringify({claims:[],issues:[{kind:continuing?'discussion':'verification',question:'只讨论 URL 续签的责任边界',reason:continuing?'两侧的签发方案仍值得比较':'需实际测量排队时间才能确定',nextStep:'核对 URL 协议与排队时长'}],recommendation:'先做临时素材中转，避免扩大为全部项目存储。',nextSteps:['请开发与测试核对 URL 协议后，再由用户决定是否实施。'],closingReason:continuing?'接口定案需要先比较续签方案':'总体可行性已回答，具体有效期需实测'})}</omega-discussion>`;
+const report=(continuing=false,responderTaskIds=[])=>`<omega-discussion>${JSON.stringify({claims:[],issues:[{kind:continuing?'discussion':'verification',question:'只讨论 URL 续签的责任边界',reason:continuing?'两侧的签发方案仍值得比较':'需实际测量排队时间才能确定',nextStep:'核对 URL 协议与排队时长',...(continuing?{responderTaskIds}:{})}],recommendation:'先做临时素材中转，避免扩大为全部项目存储。',nextSteps:['请开发与测试核对 URL 协议后，再由用户决定是否实施。'],closingReason:continuing?'接口定案需要先比较续签方案':'总体可行性已回答，具体有效期需实测'})}</omega-discussion>`;
 function fixture(overrides={}){
   const store=new GroupStore(':memory:');let group=store.createGroup({name:'讨论'},'coord','/work');
   for(const name of ['开发','测试'])group=store.addMember(group.id,{threadId:name,name,role:name,responsibilities:`${name}负责协议`,skills:'协议分析',cwd:'/work/'+name});
@@ -20,15 +20,24 @@ test('discussion waits for visible synthesis, then can conclude without spending
     await f.o.discussion.run(f.group.id,req.id,1);assert.equal(f.calls.length,1);
   }finally{f.store.close()}
 });
-test('round synthesis unlocks next round and shared focus is added to role-aware member prompt',async()=>{
-  const f=fixture();try{f.answer(report(true));const req=f.submit();f.finish(req);await f.o.discussion.run(f.group.id,req.id,1);const tasks=f.store.runnableTasks(f.group.id);assert.equal(tasks.length,2);
+test('round synthesis unlocks only selected responders and shared focus is added to role-aware member prompt',async()=>{
+  const f=fixture();try{const req=f.submit();f.answer(report(true,[req.tasks[0].id]));f.finish(req);await f.o.discussion.run(f.group.id,req.id,1);const tasks=f.store.runnableTasks(f.group.id);assert.equal(tasks.length,1);assert.equal(tasks[0].member_id,req.tasks[0].memberId);assert.match(tasks[0].objective,/只讨论 URL 续签的责任边界/);assert.doesNotMatch(tasks[0].objective,/围绕用户问题继续讨论/);
     const current=f.store.getRequirement(req.id);current.discussionFocus=f.store.db.prepare('SELECT report_json FROM discussion_reports WHERE requirement_id=?').get(req.id).report_json;
     const prompt=memberTaskPrompt(f.group,current,f.group.members[0],current.tasks.find(t=>t.round===2&&t.memberId===f.group.members[0].id));assert.match(prompt,/开发负责协议/);assert.match(prompt,/只讨论 URL 续签/);assert.match(prompt,/成员 测试/);assert.match(prompt,/pass 不表示赞同/);
-    f.finish(req,2,'(pass)');await f.o.discussion.run(f.group.id,req.id,2);assert.equal(f.store.getRequirement(req.id).status,'completed');assert.equal(f.store.getGroup(f.group.id,req.id).messages.filter(m=>m.reference?.type==='discussion-summary').length,2);
+    f.answer(report());f.finish(req,2,'(pass)');await f.o.discussion.run(f.group.id,req.id,2);assert.equal(f.store.getRequirement(req.id).status,'completed');assert.equal(f.store.getGroup(f.group.id,req.id).messages.filter(m=>m.reference?.type==='discussion-summary').length,2);
   }finally{f.store.close()}
 });
-test('budget exhaustion emits a stage summary, preserves queued work, and resumes on explicit extension',async()=>{
-  const f=fixture();try{f.answer(report(true));const req=f.submit(1);f.finish(req);assert.equal(f.store.getRequirement(req.id).status,'paused');await f.o.discussion.run(f.group.id,req.id,1);assert.equal(f.store.getRequirement(req.id).status,'paused');assert.equal(f.store.getGroup(f.group.id,req.id).messages.find(m=>m.reference?.type==='discussion-summary').reference.kind,'paused');assert.equal(f.store.runnableTasks(f.group.id).length,0);f.store.extendBudget(f.group.id,req.id,{maxRounds:3});assert.equal(f.store.runnableTasks(f.group.id).length,2);
+test('last discussion round produces a final delivery with unresolved choices instead of queued work',async()=>{
+  const f=fixture();try{const req=f.submit(1);f.answer(report(true,[req.tasks[0].id]));f.finish(req);assert.equal(f.store.getRequirement(req.id).status,'running');await f.o.discussion.run(f.group.id,req.id,1);assert.equal(f.store.getRequirement(req.id).status,'completed');assert.equal(f.store.getGroup(f.group.id,req.id).messages.find(m=>m.reference?.type==='discussion-summary').reference.kind,'final');assert.equal(f.store.getRequirement(req.id).tasks.length,2);assert.match(f.store.getRequirement(req.id).delivery,/轮次上限/);
+  }finally{f.store.close()}
+});
+test('three-round discussion re-engages a previous member and never queues a fourth round',async()=>{
+  const f=fixture();try{
+    const req=f.submit(3);f.answer(report(true,[req.tasks[0].id]));f.finish(req,1);await f.o.discussion.run(f.group.id,req.id,1);
+    f.answer(report(true,[req.tasks[1].id]));f.finish(req,2,'新的事实');await f.o.discussion.run(f.group.id,req.id,2);
+    const third=f.store.getRequirement(req.id).tasks.filter(task=>task.round===3);assert.equal(third.length,1);assert.equal(third[0].memberId,req.tasks[1].memberId);
+    f.answer(report(true,[third[0].id]));f.finish(req,3,'对新的事实的回应');await f.o.discussion.run(f.group.id,req.id,3);
+    const finished=f.store.getRequirement(req.id);assert.equal(finished.status,'completed');assert.equal(finished.tasks.some(task=>task.round===4),false);assert.match(finished.delivery,/轮次上限/);
   }finally{f.store.close()}
 });
 test('unconfirmed summary submission never replays; retry attaches to its recorded turn',async()=>{

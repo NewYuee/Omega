@@ -15,6 +15,7 @@ test('native fetch routes cannot change origin or escape API paths',()=>{
   assert.equal(apiUrl(server,'/api/images/abc-123?size=thumb'),server+'/api/images/abc-123?size=thumb');
   assert.equal(apiUrl(server,'/api/feishu/notify/groups'),server+'/api/feishu/notify/groups');
   assert.equal(apiUrl(server,'/api/feishu/notify/members?chatId=oc_test'),server+'/api/feishu/notify/members?chatId=oc_test');
+  assert.equal(apiUrl(server,'/api/feishu/notify/contacts?query=test'),server+'/api/feishu/notify/contacts?query=test');
   for(const route of ['https://evil.example/api/status','//evil.example/api/status','/api/../private','/api/%2e%2e/private','/api/images/../../x','/api/feishu//groups','/api/status#x','/api/status\\foo'])assert.throws(()=>apiUrl(server,route));
 });
 test('stored native profiles are validated before loading or sending credentials',()=>{

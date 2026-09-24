@@ -4,11 +4,12 @@ import {validateBudget} from './collaboration-budget.ts';
 import type {GroupStore} from './groups-store.ts';
 import {DiscussionFlow} from './discussion-flow.ts';
 import {feishuReferenceContext} from '../shared/feishu-reference.ts';
+import {parseGroupMemory} from './group-memory.ts';
 
 type Row=Record<string,any>;
 type StartTurn=(threadId:string,prompt:string,dispatchId:string,execution?:Row)=>Promise<Row>;
 type WaitTurn=(threadId:string,turnId:string,timeoutMs:number)=>Promise<Row>;
-interface Options{inspectTurn?(threadId:string,turnId:string):Promise<Row|null>;store:GroupStore;startTurn:StartTurn;waitTurn:WaitTurn;readTurnText(threadId:string,turnId:string):Promise<string>;readPastes?(refs:Row[]):Promise<string[]>;interruptTurn?(threadId:string,turnId:string):Promise<unknown>;isThreadActive(threadId:string):boolean;isWorkspaceBusy?(cwd:string,groupId:string,accessMode:string):boolean;notify?(event:unknown):void;lookupDispatch?(id:string):string|null;handoffFiles?(tasks:Row[]):Promise<Record<string,string>>}
+interface Options{inspectTurn?(threadId:string,turnId:string):Promise<Row|null>;store:GroupStore;startTurn:StartTurn;waitTurn:WaitTurn;readTurnText(threadId:string,turnId:string):Promise<string>;readPastes?(refs:Row[]):Promise<string[]>;interruptTurn?(threadId:string,turnId:string):Promise<unknown>;isThreadActive(threadId:string):boolean;isWorkspaceBusy?(cwd:string,groupId:string,accessMode:string):boolean;notify?(event:unknown):void;lookupDispatch?(id:string):string|null;dispatchRecorded?(id:string):boolean;handoffFiles?(tasks:Row[]):Promise<Record<string,string>>;archiveRequirement?(requirementId:string,note:{summary:string;openItems:string[]}):void;hasArchive?(requirementId:string):boolean;prepareCoordinator?(groupId:string):Promise<void>;prepareMember?(memberId:string):Promise<void>}
 const clipped=(value:any,max=12000)=>String(value||'').slice(-max);
 const errorMessage=(error:unknown)=>error instanceof Error?error.message:String(error);
 const wait=(ms:number)=>new Promise<void>(resolve=>setTimeout(resolve,ms));
@@ -89,12 +90,34 @@ export function stripMemberDecision(text:string){return text.replace(/\s*<omega-
 export class GroupOrchestrator{
   readonly discussion=new DiscussionFlow(this);
   readonly store:GroupStore;readonly startTurn:StartTurn;readonly waitTurn:WaitTurn;readonly readTurnText:Options['readTurnText'];readonly readPastes:NonNullable<Options['readPastes']>;readonly isThreadActive:Options['isThreadActive'];readonly isWorkspaceBusy:NonNullable<Options['isWorkspaceBusy']>;readonly notify:NonNullable<Options['notify']>;
-  readonly inspectTurn:Options['inspectTurn'];readonly interruptTurn:NonNullable<Options['interruptTurn']>;readonly handoffFiles:(tasks:Row[])=>Promise<Record<string,string>>;readonly lookupDispatch:(id:string)=>string|null;readonly runningTasks=new Set<string>();readonly coordinatorBusy=new Set<string>();readonly pumping=new Set<string>();readonly pendingPumps=new Set<string>();readonly suspendedGroups=new Set<string>();
-  constructor({inspectTurn,store,startTurn,waitTurn,readTurnText,readPastes=async()=>[],interruptTurn=async()=>{},isThreadActive,isWorkspaceBusy=()=>false,notify=()=>{},lookupDispatch=()=>null,handoffFiles=async()=>({})}:Options){this.inspectTurn=inspectTurn;this.handoffFiles=handoffFiles;this.lookupDispatch=lookupDispatch;this.store=store;this.startTurn=startTurn;this.waitTurn=waitTurn;this.readTurnText=readTurnText;this.readPastes=readPastes;this.interruptTurn=interruptTurn;this.isThreadActive=isThreadActive;this.isWorkspaceBusy=isWorkspaceBusy;this.notify=notify;store.externalQueueReason=task=>this.isThreadActive(task.threadId)?'等待成员当前会话结束':this.isWorkspaceBusy(task.cwd,task.group_id,task.access_mode)?'等待工作目录空闲':null;}
+  readonly inspectTurn:Options['inspectTurn'];readonly interruptTurn:NonNullable<Options['interruptTurn']>;readonly handoffFiles:(tasks:Row[])=>Promise<Record<string,string>>;readonly lookupDispatch:(id:string)=>string|null;readonly archiveRequirement:Options['archiveRequirement'];readonly hasArchive:Options['hasArchive'];readonly runningTasks=new Set<string>();readonly coordinatorBusy=new Set<string>();readonly pumping=new Set<string>();readonly pendingPumps=new Set<string>();readonly suspendedGroups=new Set<string>();
+  readonly prepareCoordinator:NonNullable<Options['prepareCoordinator']>;
+  readonly prepareMember:NonNullable<Options['prepareMember']>;
+  readonly dispatchRecorded:NonNullable<Options['dispatchRecorded']>;
+  constructor({inspectTurn,store,startTurn,waitTurn,readTurnText,readPastes=async()=>[],interruptTurn=async()=>{},isThreadActive,isWorkspaceBusy=()=>false,notify=()=>{},lookupDispatch=()=>null,dispatchRecorded=()=>true,handoffFiles=async()=>({}),archiveRequirement,hasArchive,prepareCoordinator=async()=>{},prepareMember=async()=>{}}:Options){this.inspectTurn=inspectTurn;this.handoffFiles=handoffFiles;this.lookupDispatch=lookupDispatch;this.dispatchRecorded=dispatchRecorded;this.archiveRequirement=archiveRequirement;this.hasArchive=hasArchive;this.prepareCoordinator=prepareCoordinator;this.prepareMember=prepareMember;this.store=store;this.startTurn=startTurn;this.waitTurn=waitTurn;this.readTurnText=readTurnText;this.readPastes=readPastes;this.interruptTurn=interruptTurn;this.isThreadActive=isThreadActive;this.isWorkspaceBusy=isWorkspaceBusy;this.notify=notify;store.externalQueueReason=task=>this.isThreadActive(task.threadId)?'等待成员当前会话结束':this.isWorkspaceBusy(task.cwd,task.group_id,task.access_mode)?'等待工作目录空闲':null;}
   changed(groupId:string){this.notify({method:'omega/group-updated',params:{groupId}});}
   submit(groupId:string,input:Row){const budget=validateBudget(input);const mode=input.collaborationMode||'direct',rounds=input.maxRounds??(mode==='handoff'?10:3);if(!['direct','handoff','discussion'].includes(mode)||!Number.isInteger(rounds)||rounds<1||rounds>100)throw new Error('协作模式无效或轮次不在 1–100 范围内');const created=this.store.createRequirement(groupId,input),group=this.store.getGroup(groupId,created.requirement.id),direct=directAssignments(created.requirement.content,group.members,created.requirement.mentions);this.store.configureCollaboration(created.requirement.id,mode,rounds);this.store.configureBudget(created.requirement.id,budget);if(!direct.length&&mode==='discussion')direct.push(...group.members.map((m:Row)=>({memberId:m.id,title:created.requirement.content.slice(0,80),objective:compactTaskObjective(created.requirement.content)})));if(!direct.length&&created.requirement.replyTaskId){const previous=this.store.getTask(created.requirement.replyTaskId),member=group.members.find((m:Row)=>m.id===previous?.memberId);if(member)direct.push({memberId:member.id,title:created.requirement.content.slice(0,80),objective:compactTaskObjective(created.requirement.content)});}if(mode==='discussion')for(const task of direct)(task as Row).accessMode='read';if(direct.length){this.store.setDirectPlan(created.requirement.id,`直接发送给 ${direct.map(task=>group.members.find((member:Row)=>member.id===task.memberId)?.name).join('、')}`,direct);this.store.confirmPlan(groupId,created.requirement.id,true);}this.changed(groupId);this.schedule(groupId);return this.store.getGroup(groupId,created.requirement.id);}
   confirm(groupId:string,requirementId:string){const group=this.store.confirmPlan(groupId,requirementId);this.changed(groupId);this.schedule(groupId);return group;}
-  async retry(groupId:string,requirementId:string){const owned=this.store.db.prepare("SELECT status FROM requirements WHERE id=? AND group_id=?").get(requirementId,groupId);if(!owned||owned.status!=='paused'||this.coordinatorBusy.has(groupId))throw Object.assign(Error('当前流程不需要重试或仍在处理中'),{status:409});if(this.discussion.prepareRetry(requirementId)){this.changed(groupId);this.schedule(groupId);return this.store.getGroup(groupId,requirementId);}const unknown=this.store.getRequirement(requirementId)?.tasks?.filter((task:Row)=>task.status==='unknown')||[];if(unknown.length){for(const task of unknown){const turnId=task.turnId||this.lookupDispatch(task.dispatchId);if(!turnId)throw Object.assign(new Error('派发结果未知，不能安全重发。请先打开成员会话核对，取消原问题后再决定是否重新提问。'),{status:409});this.store.setTaskTurn(task.id,turnId);this.store.db.prepare("UPDATE tasks SET recovery_checked_at=NULL WHERE id=?").run(task.id);if(this.store.reattachTask(task.id)){const member=this.store.getGroup(groupId).members.find((m:Row)=>m.id===task.memberId);this.runningTasks.add(task.id);void this.recoverTask({...task,turnId,threadId:member.threadId});}}return this.store.getGroup(groupId,requirementId);}const state=this.store.retry(groupId,requirementId);this.changed(groupId);this.schedule(groupId);return state.group;}
+  async retry(groupId:string,requirementId:string){
+    const owned=this.store.db.prepare("SELECT status FROM requirements WHERE id=? AND group_id=?").get(requirementId,groupId);
+    if(!owned||owned.status!=='paused'||this.coordinatorBusy.has(groupId))throw Object.assign(Error('当前流程不需要重试或仍在处理中'),{status:409});
+    if(this.discussion.prepareRetry(requirementId)){this.changed(groupId);this.schedule(groupId);return this.store.getGroup(groupId,requirementId);}
+    const unknown=this.store.getRequirement(requirementId)?.tasks?.filter((task:Row)=>task.status==='unknown')||[];
+    if(unknown.length){
+      // This exact resume error occurs before turn/start and before the submission ledger is written.
+      // Older versions nevertheless marked it unknown; only those provably unsent tasks may be retried.
+      const unsent=(task:Row)=>!task.turnId&&!!task.dispatchId&&!this.dispatchRecorded(task.dispatchId)&&/^no rollout found for thread id [0-9a-f-]+$/i.test(String(task.error||''));
+      for(const task of unknown)if(!unsent(task)&&!task.turnId&&!this.lookupDispatch(task.dispatchId))throw Object.assign(new Error('派发结果未知，不能安全重发。请先打开成员会话核对，取消原问题后再决定是否重新提问。'),{status:409});
+      if(unknown.some(unsent)&&!unknown.every(unsent))throw Object.assign(new Error('部分成员任务仍需核对原轮次，不能同时重试未派发任务'),{status:409});
+      if(unknown.every(unsent)){
+        for(const task of unknown)this.store.db.prepare("UPDATE tasks SET status='failed',error='成员会话首轮未持久化，原任务未派发',updated_at=? WHERE id=? AND status='unknown'").run(new Date().toISOString(),task.id);
+      }else{
+        for(const task of unknown){const turnId=task.turnId||this.lookupDispatch(task.dispatchId);if(!turnId)continue;this.store.setTaskTurn(task.id,turnId);this.store.db.prepare("UPDATE tasks SET recovery_checked_at=NULL WHERE id=?").run(task.id);if(this.store.reattachTask(task.id)){const member=this.store.getGroup(groupId).members.find((m:Row)=>m.id===task.memberId);this.runningTasks.add(task.id);void this.recoverTask({...task,turnId,threadId:member.threadId});}}
+        return this.store.getGroup(groupId,requirementId);
+      }
+    }
+    const state=this.store.retry(groupId,requirementId);this.changed(groupId);this.schedule(groupId);return state.group;
+  }
   requestChanges(groupId:string,requirementId:string,input:Row){const group=this.store.requestChanges(groupId,requirementId,input);this.changed(groupId);this.schedule(groupId);return group;}
   async resume(){
     const recoveries=[];
@@ -125,7 +148,7 @@ export class GroupOrchestrator{
   suspend(groupId:string){this.suspendedGroups.add(groupId);this.pendingPumps.delete(groupId);}
   unsuspend(groupId:string){this.suspendedGroups.delete(groupId);this.schedule(groupId);}
   forget(groupId:string){this.suspendedGroups.delete(groupId);this.pendingPumps.delete(groupId);this.coordinatorBusy.delete(groupId);this.pumping.delete(groupId);}
-  async pump(groupId:string){if(this.suspendedGroups.has(groupId)||this.pumping.has(groupId))return;this.pumping.add(groupId);try{do{this.pendingPumps.delete(groupId);if(this.suspendedGroups.has(groupId))return;const group=this.store.getGroup(groupId);if(!this.coordinatorBusy.has(groupId)&&!this.isThreadActive(group.coordinatorThreadId)){const review=this.store.nextReview(groupId),plan=this.store.nextPlan(groupId),finalizable=this.store.nextFinalizable(groupId),discussion=this.discussion.next(groupId);const operation=discussion?()=>this.discussion.run(groupId,discussion.id,discussion.round):review?()=>this.reviewTask(groupId,review.requirement_id,review.id):plan?()=>this.draftPlan(groupId,plan.id):finalizable?()=>this.finalize(groupId,finalizable.id):null;if(operation){this.coordinatorBusy.add(groupId);operation().catch(error=>this.handleCoordinatorError(groupId,discussion?.id||review?.requirement_id||plan?.id||finalizable?.id,error)).finally(()=>{this.coordinatorBusy.delete(groupId);this.schedule(groupId);});}}
+  async pump(groupId:string){if(this.suspendedGroups.has(groupId)||this.pumping.has(groupId))return;this.pumping.add(groupId);try{do{this.pendingPumps.delete(groupId);if(this.suspendedGroups.has(groupId))return;const group=this.store.getGroup(groupId);if(!this.coordinatorBusy.has(groupId)&&!this.isThreadActive(group.coordinatorThreadId)){const review=this.store.nextReview(groupId),plan=this.store.nextPlan(groupId),finalizable=this.store.nextFinalizable(groupId),discussion=this.discussion.next(groupId);const operation=discussion?()=>this.discussion.run(groupId,discussion.id,discussion.round):review?()=>this.reviewTask(groupId,review.requirement_id,review.id):plan?()=>this.draftPlan(groupId,plan.id):finalizable?()=>this.finalize(groupId,finalizable.id):null;if(operation){this.coordinatorBusy.add(groupId);(async()=>{await this.prepareCoordinator(groupId);await operation();})().catch(error=>this.handleCoordinatorError(groupId,discussion?.id||review?.requirement_id||plan?.id||finalizable?.id,error)).finally(()=>{this.coordinatorBusy.delete(groupId);this.schedule(groupId);});}}
         for(const req of this.store.db.prepare("SELECT id FROM requirements WHERE group_id=? AND status='running'").all(groupId))this.store.enforceBudget(req.id);const fresh=this.store.getGroup(groupId);let slots=Math.max(0,fresh.limits.maxConcurrency-this.store.runningCount(groupId));while(slots){const task=this.store.runnableTasks(groupId).find(item=>!this.runningTasks.has(item.id)&&!this.isThreadActive(item.thread_id)&&!this.isWorkspaceBusy(item.cwd,groupId,item.access_mode));if(!task)break;this.dispatchTask(groupId,task).catch(error=>console.error('[omega task]',error));slots--;}
       }while(this.pendingPumps.has(groupId));}finally{this.pumping.delete(groupId);if(this.pendingPumps.has(groupId))this.schedule(groupId);}}
   handleCoordinatorError(groupId:string,requirementId:string,error:unknown){if(this.store.getRequirement(requirementId)?.status==='cancelled')return;this.store.failPhase(requirementId,errorMessage(error));this.changed(groupId);}
@@ -145,7 +168,40 @@ export class GroupOrchestrator{
     const plan=parseCoordinatorPlan(text);const tasks=plan.tasks.map((t:Row)=>({...t,objective:compactTaskObjective(t.objective||req.content),acceptance:''}));
     this.store.setPlan(requirementId,plan.summary,tasks,turnId,text);this.store.confirmPlan(groupId,requirementId,true);this.changed(groupId);
   }
-  async dispatchTask(groupId:string,raw:Row){this.runningTasks.add(raw.id);let submitted=false;try{if(this.store.getTask(raw.id)?.status!=='queued')return;const dispatchId=`group-task:${raw.id}:${raw.attempt+1}:${randomUUID()}`,initial=this.store.getGroup(groupId,raw.requirement_id),timeoutMs=initial.limits.taskTimeoutMinutes*60000;this.store.startTask(raw.id,dispatchId,null,timeoutMs);this.changed(groupId);const group=this.store.getGroup(groupId,raw.requirement_id),req=group.requirement,member=group.members.find((item:Row)=>item.id===raw.member_id);if(!req||!member)throw new Error('需求或任务成员已不存在');req.discussionFocus=this.store.db.prepare("SELECT report_json FROM discussion_reports WHERE requirement_id=? AND status='completed' ORDER BY round_no DESC LIMIT 1").get(req.id)?.report_json;const dependencyIds=new Set(this.store.getTask(raw.id)?.dependencies||[]),files=await this.handoffFiles(req.tasks.filter((t:Row)=>dependencyIds.has(t.id)&&t.memberId!==member.id&&t.status==='completed'));for(const t of req.tasks)t.handoffFile=files[t.id];const mode=raw.access_mode==='read'?'read':'write',context=await this.prepareTopicContext(raw.id),prompt=[memberTaskPrompt(group,req,member,this.store.getTask(raw.id)||raw,await this.readPastes(req.pastedTexts||[])),context.text].filter(Boolean).join('\n\n');if(this.store.getTask(raw.id)?.status!=='running')return;submitted=true;const started=await this.startTurn(member.threadId,prompt,dispatchId,{cwd:member.cwd,accessMode:mode,imageIds:(req.images||[]).map((image:Row)=>image.id)}),turnId=started.turn?.id;if(!turnId)throw new Error('成员任务没有返回执行轮次');this.store.setTaskTurn(raw.id,turnId);this.store.ackTopicContext(raw.id,context.cursor);this.changed(groupId);if(this.store.getTask(raw.id)?.status==='cancelled'){await this.interruptTurn(member.threadId,turnId).catch(()=>{});return;}const completion=await this.waitTurn(member.threadId,turnId,timeoutMs);if(this.store.getTask(raw.id)?.status==='cancelled')return;if(completion.status!=='completed')throw new Error(`执行状态为 ${completion.status||'未知'}`);const result=await this.readTurnText(member.threadId,turnId);if(!result.trim())throw new Error('成员没有返回可交接的结果');this.finishMemberTurn(raw.id,result,turnId);this.changed(groupId);}catch(error){if(this.store.getTask(raw.id)?.status==='cancelled')return;const detail=errorMessage(error),turnStarted=(submitted&&(error as {status?:number})?.status!==410)||!!this.store.getTask(raw.id)?.turnId,missing=/thread not found|missing source rollout|does not exist/i.test(detail),message=missing?'成员会话不存在或已无法恢复，请编辑该成员并更换关联会话后重试':detail;this.store.failTask(raw.id,message,missing&&!this.store.getTask(raw.id)?.turnId?'failed':turnStarted?'unknown':'failed');this.changed(groupId);}finally{this.runningTasks.delete(raw.id);this.schedule(groupId);}}
+  async dispatchTask(groupId:string,raw:Row){
+    this.runningTasks.add(raw.id);let submitted=false;
+    try{
+      if(this.store.getTask(raw.id)?.status!=='queued')return;
+      const dispatchId=`group-task:${raw.id}:${raw.attempt+1}:${randomUUID()}`,initial=this.store.getGroup(groupId,raw.requirement_id),timeoutMs=initial.limits.taskTimeoutMinutes*60000;
+      this.store.startTask(raw.id,dispatchId,null,timeoutMs);this.changed(groupId);
+      await this.prepareMember(raw.member_id);
+      const group=this.store.getGroup(groupId,raw.requirement_id),req=group.requirement,member=group.members.find((item:Row)=>item.id===raw.member_id);
+      if(!req||!member)throw new Error('需求或任务成员已不存在');
+      req.discussionFocus=this.store.db.prepare("SELECT report_json FROM discussion_reports WHERE requirement_id=? AND status='completed' ORDER BY round_no DESC LIMIT 1").get(req.id)?.report_json;
+      const dependencyIds=new Set(this.store.getTask(raw.id)?.dependencies||[]),files=await this.handoffFiles(req.tasks.filter((t:Row)=>dependencyIds.has(t.id)&&t.memberId!==member.id&&t.status==='completed'));
+      for(const t of req.tasks)t.handoffFile=files[t.id];
+      const mode=raw.access_mode==='read'?'read':'write',context=await this.prepareTopicContext(raw.id),prompt=[memberTaskPrompt(group,req,member,this.store.getTask(raw.id)||raw,await this.readPastes(req.pastedTexts||[])),context.text].filter(Boolean).join('\n\n');
+      if(this.store.getTask(raw.id)?.status!=='running')return;
+      submitted=true;
+      const started=await this.startTurn(member.threadId,prompt,dispatchId,{cwd:member.cwd,accessMode:mode,imageIds:(req.images||[]).map((image:Row)=>image.id)}),turnId=started.turn?.id;
+      if(!turnId)throw new Error('成员任务没有返回执行轮次');
+      this.store.setTaskTurn(raw.id,turnId);this.store.ackTopicContext(raw.id,context.cursor);this.changed(groupId);
+      if(this.store.getTask(raw.id)?.status==='cancelled'){await this.interruptTurn(member.threadId,turnId).catch(()=>{});return;}
+      const completion=await this.waitTurn(member.threadId,turnId,timeoutMs);
+      if(this.store.getTask(raw.id)?.status==='cancelled')return;
+      if(completion.status!=='completed')throw new Error(`执行状态为 ${completion.status||'未知'}`);
+      const result=await this.readTurnText(member.threadId,turnId);
+      if(!result.trim())throw new Error('成员没有返回可交接的结果');
+      this.finishMemberTurn(raw.id,result,turnId);this.changed(groupId);
+    }catch(error){
+      if(this.store.getTask(raw.id)?.status==='cancelled')return;
+      const detail=errorMessage(error),turnStarted=(submitted&&!(error as {definiteNotStarted?:boolean})?.definiteNotStarted)||!!this.store.getTask(raw.id)?.turnId;
+      const missing=/thread not found|missing source rollout|no rollout found|does not exist/i.test(detail);
+      const message=missing?'成员会话不存在或已无法恢复，请编辑该成员并更换关联会话后重试':detail;
+      const definitelyFailed=(missing&&!this.store.getTask(raw.id)?.turnId)||!turnStarted;
+      this.store.failTask(raw.id,message,definitelyFailed?'failed':'unknown');this.changed(groupId);
+    }finally{this.runningTasks.delete(raw.id);this.schedule(groupId);}
+  }
   async prepareTopicContext(taskId:string){
     const context=this.store.topicContext(taskId);
     if(!context.files.length)return context;
@@ -158,7 +214,23 @@ export class GroupOrchestrator{
   async finalize(groupId:string,requirementId:string){
     const group=this.store.getGroup(groupId,requirementId),req=group.requirement;if(!req||req.status!=='running')return;
     this.store.beginFinalize(requirementId);this.changed(groupId);
-    this.store.completeDelivery(requirementId,req.tasks.map((t:Row)=>t.result).join('\n\n'),null,false);this.changed(groupId);return;
+    this.store.completeDelivery(requirementId,req.tasks.map((t:Row)=>t.result).join('\n\n'),null,false);this.changed(groupId);
+    if(this.archiveRequirement&&!this.hasArchive?.(requirementId)){
+      try{
+        const files=await this.handoffFiles(req.tasks.filter((task:Row)=>task.result));
+        const excerptLength=Math.max(300,Math.floor(12000/Math.max(1,req.tasks.length)));
+        const statements=req.tasks.map((task:Row)=>({taskId:task.id,member:group.members.find((member:Row)=>member.id===task.memberId)?.name||task.memberId,result:String(task.result||'').slice(0,excerptLength),...(files[task.id]?{fullTextFile:files[task.id]}:{})}));
+        const prompt=`你是群组协调者。请把已完成的群组问题整理为便于以后接续的档案。只读，不修改项目。\n用户问题：${req.content}\n成员结果：${JSON.stringify(statements)}\n必须区分成员报告、已完成事项、未决事项和测试范围。不要把建议写成已确认事实；保留关键取舍和少数意见。摘要最多 1800 字，待办最多 10 条，每条最多 400 字。原始成员发言会完整保存在档案中，无需在摘要复述全部细节。仅返回 <omega-group-memory>{"summary":"当前结果、依据、限制与后续判断","openItems":["未完成事项或需要核实的问题"]}</omega-group-memory>`;
+        const {text}=await this.startAndRead(group.coordinatorThreadId,prompt,`group-memory:${requirementId}:${randomUUID()}`,group.limits.taskTimeoutMinutes*60000);
+        this.archiveRequirement(requirementId,parseGroupMemory(text));
+      }catch(error){
+        // A completed user task must remain delivered even if its optional synthesis fails.
+        try{this.archiveRequirement(requirementId,{summary:`协调者归档待整理。原问题：${req.content.slice(0,900)}`,openItems:['请查看完整成员结果，核对结论和后续事项。']});}catch(fallback){console.error('[omega group memory]',fallback)}
+        console.error('[omega group memory synthesis]',error);
+      }
+      this.changed(groupId);
+    }
+    return;
   }
   async run(groupId:string,requirementId:string){this.schedule(groupId);const timeout=Date.now()+this.store.getGroup(groupId,requirementId).limits.taskTimeoutMinutes*60000;while(Date.now()<timeout){const req=this.store.getRequirement(requirementId);if(!req||['awaiting_confirmation','completed','accepted','cancelled','paused'].includes(req.status))return;await wait(25);}throw new Error('等待协作流程超时');}
 }

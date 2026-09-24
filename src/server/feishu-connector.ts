@@ -2,7 +2,7 @@ import {Client,WSClient,EventDispatcher} from '@larksuiteoapi/node-sdk';
 import type {FeishuConfig} from './feishu-config.ts';
 import {FeishuService,type FeishuHost} from './feishu-service.ts';
 import {FeishuStore,type FeishuDb} from './feishu-store.ts';
-import {downloadFeishuResource,feishuResourceImporter} from './feishu-resources.ts';
+import {downloadFeishuResource,feishuResourceImporter,requestFeishuResource} from './feishu-resources.ts';
 import type {ImageStore} from './images.ts';
 import type {PastedTextStore} from './pasted-content.ts';
 import {FeishuNotifier} from './feishu-notify.ts';
@@ -30,7 +30,7 @@ export class FeishuConnector{
       const response=await client.im.message.get({path:{message_id:messageId},params:{user_id_type:'open_id'}});
       if(response.code)throw Error('飞书引用消息读取失败');
       return response.data?.items?.find(item=>item.message_id===messageId);
-    },media?feishuResourceImporter(media.images,media.pastes,(resource,limit)=>downloadFeishuResource(()=>client.im.messageResource.get({path:{message_id:resource.messageId,file_key:resource.key},params:{type:resource.kind}}),limit)):undefined);
+    },media?feishuResourceImporter(media.images,media.pastes,(resource,limit)=>downloadFeishuResource(()=>requestFeishuResource(resource,type=>client.im.messageResource.get({path:{message_id:resource.messageId,file_key:resource.key},params:{type}})),limit)):undefined);
   }
   async start(){
     const dispatcher=new EventDispatcher({}).register({
@@ -42,6 +42,7 @@ export class FeishuConnector{
   status(){return{enabled:true,connection:this.ws.getConnectionStatus().state,hasError:this.lastError,...this.service.store.stats()};}
   notificationGroups(){return this.notifier.groups();}
   notificationMembers(chatId:string){return this.notifier.members(chatId);}
+  notificationContacts(query:string){return this.notifier.contacts(query);}
   sendNotification(input:Record<string,unknown>){return this.notifier.send(input);}
   close(){this.service.close();this.ws.close({force:true});}
 }

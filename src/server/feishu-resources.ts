@@ -9,6 +9,13 @@ export type FeishuAttachment={kind:'image'|'file';id:string;name:string;chars?:n
 export type FeishuResourceImporter=(resource:FeishuResource,remainingBytes:number)=>Promise<FeishuAttachment>;
 type ResourceResponse={getReadableStream:()=>Readable;headers?:Record<string,unknown>};
 
+// Card and post image nodes use img_* keys, but Feishu can expose those keys
+// through the message-resource endpoint as type=file. Retry only when opening
+// an image resource fails; stream/size/content validation must not be retried.
+export async function requestFeishuResource(resource:FeishuResource,request:(type:'image'|'file')=>Promise<ResourceResponse>){
+  try{return await request(resource.kind);}catch(cause){if(resource.kind!=='image')throw cause;return request('file');}
+}
+
 // Read only a bounded stream. Never use SDK writeFile with a remotely supplied filename.
 export async function downloadFeishuResource(request:()=>Promise<ResourceResponse>,limit:number,timeoutMs=15000):Promise<Buffer>{
   let stream:Readable|undefined,expired=false;let timer:NodeJS.Timeout|undefined;

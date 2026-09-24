@@ -10,8 +10,8 @@ try{for(const width of [390,1280]){
   page.on('pageerror',error=>errors.push(error.message));
   await page.addInitScript(()=>{sessionStorage.setItem('omega-key','browser-test-key');Object.defineProperty(navigator,'clipboard',{value:{writeText:async text=>{window.copiedText=text}},configurable:true});const original=window.fetch;window.fetch=(url,options)=>String(url).includes('/api/events')?Promise.resolve(new Response(new ReadableStream({start(){}}))):original(url,options);});
   const stamp=new Date().toISOString(),member={id:'m',threadId:'thread',name:'开发',role:'开发',cwd:'/work/project',responsibilities:'开发项目'};
-  const group=()=>({id:'g',name:'浏览器回归',status:'running',members:[member],limits:{maxConcurrency:4},requirements:[{id:'q',content:'检查项目',status:'running',tasks:[{id:'t',memberId:'m',status:'running'}],createdAt:stamp}],messages:Array.from({length:120},(_,i)=>({id:'msg'+i,requirementId:'q',author:i===118?'你':'开发',kind:i===118?'user':'member',content:'# 结果 '+i+'\n\n'+('正文内容。'.repeat(1000))+(i===117?'\n\n```sh\necho group-code\n```':''),createdAt:stamp,reference:i===118?undefined:{taskId:'t',threadId:'thread',...(i===115||i===119?{type:'progress'}:{})}})),runningTasks:1});
-  await page.route('**/*',async route=>{const url=new URL(route.request().url());if(url.pathname.startsWith('/api/images/'))return route.fulfill({body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jT1sAAAAASUVORK5CYII=','base64'),contentType:'image/png'});if(url.pathname==='/api/images')return route.fulfill({json:{id:'group-image-1',expiresAt:Date.now()+86400000}});if(url.pathname.startsWith('/api/')){let json={data:[],active:{},approvals:[]};if(url.pathname==='/api/automations')json={automations:Array.from({length:15},(_,i)=>({id:'auto'+i,name:'定时检查 '+i,prompt:'检查服务运行情况',enabled:true,schedule:{kind:'interval',minutes:60},lastStatus:'idle',nextRunAt:null,lastRunAt:null}))};else if(url.pathname==='/api/status')json={...json,ready:true,workspace:'/work',devices:1};else if(url.pathname==='/api/groups'&&route.request().method()==='GET')json={groups:[{id:'g',name:'浏览器回归',status:'running',memberCount:1}]};else if(url.pathname.startsWith('/api/groups')){if(route.request().method()==='POST')sent.push(route.request().postDataJSON());json=url.searchParams.has('before')?{messages:group().messages.map((m,i)=>({...m,id:'old'+i}))}:{group:group()};}return route.fulfill({json});}const name=url.pathname==='/'?'index.html':url.pathname.slice(1);if(name.includes('..'))return route.abort();try{const body=await readFile(new URL('../web-dist/'+name,import.meta.url));return route.fulfill({body,contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''})}});
+  const group=()=>({id:'g',name:'浏览器回归',status:'running',coordinatorThreadId:'coord',coordinatorThreadName:'[协调者] 浏览器回归',coordinatorOwned:true,members:[member],limits:{maxConcurrency:4},requirements:[{id:'q',content:'检查项目',status:'running',tasks:[{id:'t',memberId:'m',status:'running'}],createdAt:stamp}],messages:Array.from({length:120},(_,i)=>({id:'msg'+i,requirementId:'q',author:i===118?'你':'开发',kind:i===118?'user':'member',content:'# 结果 '+i+'\n\n'+('正文内容。'.repeat(1000))+(i===117?'\n\n```sh\necho group-code\n```':''),createdAt:stamp,reference:i===118?undefined:{taskId:'t',threadId:'thread',...(i===115||i===119?{type:'progress'}:{})}})),runningTasks:1});
+  await page.route('**/*',async route=>{const url=new URL(route.request().url());if(url.pathname.startsWith('/api/images/'))return route.fulfill({body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jT1sAAAAASUVORK5CYII=','base64'),contentType:'image/png'});if(url.pathname==='/api/images')return route.fulfill({json:{id:'group-image-1',expiresAt:Date.now()+86400000}});if(url.pathname.startsWith('/api/')){let json={data:[],active:{},approvals:[]};if(url.pathname==='/api/automations')json={automations:Array.from({length:15},(_,i)=>({id:'auto'+i,name:'定时检查 '+i,prompt:'检查服务运行情况',enabled:true,schedule:{kind:'interval',minutes:60},lastStatus:'idle',nextRunAt:null,lastRunAt:null}))};else if(url.pathname==='/api/status')json={...json,ready:true,workspace:'/work',devices:1};else if(url.pathname==='/api/rpc'&&route.request().postDataJSON()?.method==='thread/list')json={data:[{id:'coord',name:'[协调者] 浏览器回归',cwd:'/work'},{id:'candidate',name:'已有会话',cwd:'/work'},{id:'thread',name:'开发',cwd:'/work/project'}]};else if(url.pathname==='/api/groups'&&route.request().method()==='GET')json={groups:[{id:'g',name:'浏览器回归',status:'running',memberCount:1}]};else if(url.pathname.startsWith('/api/groups')){if(route.request().method()==='POST')sent.push(route.request().postDataJSON());json=url.searchParams.has('before')?{messages:group().messages.map((m,i)=>({...m,id:'old'+i}))}:{group:group()};}return route.fulfill({json});}const name=url.pathname==='/'?'index.html':url.pathname.slice(1);if(name.includes('..'))return route.abort();try{const body=await readFile(new URL('../web-dist/'+name,import.meta.url));return route.fulfill({body,contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'});}catch{return route.fulfill({status:404,body:''})}});
   const originalGroup=group;
   // Exercise the real room filter and React renderer with a visible moderator summary.
   const summary={id:'msg116',requirementId:'q',kind:'coordinator',author:'讨论主持人',createdAt:stamp,content:'### 讨论结论 · 第 2 轮\n\n共同方向：先验证接口。\n\n推荐方案与理由：先做小范围验证。\n\n下一步：请用户确认范围，不自动执行。\n\npass 不代表赞成。',reference:{type:'discussion-summary',kind:'final',round:2,threadId:'coord'}};
@@ -20,6 +20,12 @@ try{for(const width of [390,1280]){
   await page.goto('http://omega.test/');
   await page.waitForLoadState('networkidle');
   await page.waitForFunction(()=>typeof window.omegaAppState?.getSnapshot()?.shellActions?.switchMode==='function');
+  const notifications=[];
+  await page.route('**/api/feishu/notify/groups',route=>route.fulfill({json:{groups:[]}}));
+  await page.route('**/api/feishu/notify/contacts*',route=>route.fulfill({json:{contacts:[{openId:'ou_contact',name:'通讯录联系人'}]}}));
+  await page.route('**/api/feishu/notify',route=>{notifications.push(route.request().postDataJSON());return route.fulfill({json:{ok:true,messageId:'om_private'}})});
+  await page.evaluate(()=>{window.notifyResult=null;void window.omegaFeishuNotify.open('私信浏览器回归').then(value=>{window.notifyResult=value})});
+  const notify=page.getByRole('dialog',{name:'发送飞书通知'});await notify.getByLabel('发送对象').selectOption('contact');await notify.getByLabel('搜索联系人').fill('通讯录');await notify.getByText('通讯录联系人',{exact:true}).waitFor();await notify.getByText('通讯录联系人',{exact:true}).click();await notify.getByRole('button',{name:'私发给联系人'}).click();await page.waitForFunction(()=>window.notifyResult===true);assert.equal(notifications[0].targetType,'contact');assert.equal(notifications[0].contactOpenId,'ou_contact');
   if(width===1280){
     const trigger=page.locator('.omega-palette-trigger'),initial=await trigger.boundingBox();
     await page.mouse.move(initial.x+initial.width/2,initial.y+initial.height/2);await page.mouse.down();
@@ -51,6 +57,22 @@ try{for(const width of [390,1280]){
   }else assert.equal(await emptyMore.isVisible(),false,'empty desktop chats do not need a history menu');
   await page.evaluate(()=>window.omegaAppState.getSnapshot().shellActions.switchMode('groups'));
   await page.locator('[data-message-id="msg119"]').waitFor();
+  if(width===1280){
+    const coordinator=page.locator('.coordinator-card');await coordinator.waitFor();
+    assert.match(await coordinator.textContent(),/Omega 专用会话/);
+    await page.setViewportSize({width:950,height:850});
+    for(const card of [coordinator,page.locator('.member-card').filter({hasText:'开发项目'}).first()]){
+      const name=await card.locator('.member-identity strong').boundingBox(),actions=await card.locator('.member-actions').boundingBox();
+      assert.ok(name.width>=70&&name.height<25,'member name must stay horizontal in a narrow sidebar');
+      assert.ok(actions.y>=name.y+name.height,'member actions must sit below identity');
+    }
+    await page.setViewportSize({width,height:850});
+    await coordinator.getByRole('button',{name:'指定会话'}).click();
+    const dialog=page.locator('#coordinator-dialog');await dialog.waitFor();
+    assert.equal(await dialog.locator('select').locator('option').count(),2,'member sessions are excluded from coordinator choices');
+    await dialog.locator('select').selectOption('candidate');await dialog.getByRole('button',{name:'保存绑定'}).click();
+    await dialog.waitFor({state:'hidden'});assert.ok(sent.some(item=>item.action==='setCoordinator'&&item.expectedThreadId==='coord'&&item.threadId==='candidate'));sent.length=0;
+  }
   const toolbar=page.locator('.group-composer-toolbar');
   for(const input of await page.locator('#requirement-form input[type=file]').all())assert.equal(await input.isVisible(),false,'native upload inputs must remain hidden');
   assert.equal(await toolbar.locator('[aria-label="协作模式"]').count(),1);

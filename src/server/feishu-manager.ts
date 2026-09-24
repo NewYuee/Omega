@@ -4,7 +4,7 @@ import {FeishuPairing} from './feishu-pairing.ts';
 import {parseFeishuConfig,type FeishuConfig} from './feishu-config.ts';
 import type {FeishuConnector} from './feishu-connector.ts';
 
-type Runtime=Pick<FeishuConnector,'start'|'close'|'status'|'notificationGroups'|'notificationMembers'|'sendNotification'> & {service:{canReconfigure():boolean}};
+type Runtime=Pick<FeishuConnector,'start'|'close'|'status'|'notificationGroups'|'notificationMembers'|'notificationContacts'|'sendNotification'> & {service:{canReconfigure():boolean}};
 type Target={kind:'group'|'thread';id:string};
 export class FeishuManager{
   private runtime:Runtime|undefined;private error=false;private busy=false;private closed=false;
@@ -21,9 +21,10 @@ export class FeishuManager{
     try{await runtime.start();this.error=false;}catch{runtime.close();this.runtime=undefined;this.error=true;}
   }
   async status(){const value=await this.settings.read(),c=await this.settings.credentials();return{...(this.runtime?.status()||{enabled:false}),configurationError:this.error,revision:this.revision,settings:value,appId:c.appId,hasSecret:!!c.appSecret,environmentManaged:this.settings.environmentManaged(),pairing:this.pairing.status()};}
-  private connected(){if(!this.runtime||this.runtime.status().connection!=='connected')throw Object.assign(Error('飞书机器人未连接，无法读取群成员或发送通知'),{status:409});return this.runtime;}
+  private connected(){if(!this.runtime||this.runtime.status().connection!=='connected')throw Object.assign(Error('飞书机器人未连接，无法读取通知目标或发送通知'),{status:409});return this.runtime;}
   notificationGroups(){return this.connected().notificationGroups();}
   notificationMembers(chatId:string){return this.connected().notificationMembers(chatId);}
+  notificationContacts(query:string){return this.connected().notificationContacts(query);}
   sendNotification(input:Record<string,unknown>){return this.connected().sendNotification(input);}
   private idle(){if(this.runtime&&!this.runtime.service.canReconfigure())throw Object.assign(Error('飞书仍有待处理任务或回传，请结束任务并等待回传后再修改连接'),{status:409});}
   private stop(){this.runtime?.close();this.runtime=undefined;this.pairing.clear();this.error=false;}
