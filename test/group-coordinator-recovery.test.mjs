@@ -33,6 +33,21 @@ test('only an empty coordinator can be rebound',()=>{
   }finally{store.close();}
 });
 
+test('bound sessions expose coordinator and member metadata for the conversation list',()=>{
+  const store=new GroupStore(':memory:');
+  try{
+    let group=store.createGroup({name:'会话可见性'},'coordinator','/work');
+    group=store.addMember(group.id,{threadId:'member',name:'开发成员',role:'开发',cwd:'/work/project'});
+    const sessions=store.boundSessions(),coordinator=sessions.find(item=>item.id==='coordinator'),member=sessions.find(item=>item.id==='member');
+    assert.equal(coordinator.omegaBinding.type,'coordinator');
+    assert.equal(coordinator.omegaBinding.groupName,'会话可见性');
+    assert.equal(member.name,'开发成员');
+    assert.equal(member.cwd,'/work/project');
+    assert.equal(member.omegaBinding.type,'member');
+    assert.equal(member.omegaBinding.role,'开发');
+  }finally{store.close();}
+});
+
 test('a group created before restart recovers its empty coordinator on first dispatch',async()=>{
   const state=await mkdtemp(join(tmpdir(),'omega-coordinator-recovery-'));
   const workspace=join(state,'workspace'),fake=join(state,'codex.mjs'),port=15423;
@@ -47,7 +62,7 @@ createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line)
  else if(m.method==='thread/start'){const id=randomUUID(),thread={id,cwd:m.params.cwd,turns:[]};threads.set(id,thread);result={thread,model:'test',reasoningEffort:'low'};}
  else if(m.method==='thread/name/set'){const thread=threads.get(m.params.threadId);if(thread)thread.name=m.params.name;}
  else if(m.method==='thread/resume'||m.method==='thread/read'){
-   const thread=threads.get(m.params.threadId);if(!thread){emit({id:m.id,error:{message:'no rollout found for thread id '+m.params.threadId}});return;}result={thread,model:'test',reasoningEffort:'low'};
+   const thread=threads.get(m.params.threadId);if(!thread){emit({id:m.id,error:{message:'invalid paginated history lineage for '+m.params.threadId+': missing source rollout'}});return;}result={thread,model:'test',reasoningEffort:'low'};
  }
  else if(m.method==='thread/list')result={data:[...threads.values()]};
  else if(m.method==='turn/start'){
@@ -75,6 +90,15 @@ createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line)
     const memberThread=(await call({method:'thread/start',params:{cwd:workspace}},'rpc')).thread;
     group=(await call({action:'addMember',groupId:group.id,threadId:memberThread.id,name:'开发',role:'开发'})).group;
     child.kill();await once(child,'exit');child=await start();
+    const beforeOpen=(await call({method:'thread/list',params:{limit:100,sourceKinds:[]}},'rpc')).data;
+    const virtual=beforeOpen.find(thread=>thread.id===memberThread.id);
+    assert.equal(virtual.omegaVirtual,true);
+    assert.equal(virtual.omegaBinding.type,'member');
+    const opened=await call({method:'thread/resume',params:{threadId:memberThread.id},summaryOnly:true},'rpc');
+    assert.notEqual(opened.thread.id,memberThread.id);
+    assert.equal(opened.reboundFrom,memberThread.id);
+    group=(await call(null,`groups/${group.id}`)).group;
+    assert.equal(group.members[0].threadId,opened.thread.id);
     group=(await call({action:'submit',groupId:group.id,content:'实现需求'})).group;
     for(let i=0;i<80&&group.requirement.status==='plan_drafting';i++){await new Promise(resolve=>setTimeout(resolve,25));group=(await call(null,`groups/${group.id}`)).group;}
     assert.notEqual(group.coordinatorThreadId,oldId);

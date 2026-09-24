@@ -163,7 +163,11 @@ async function select(id:string, closeMenu=true,notifyWriterConflict=closeMenu) 
   lifecycle.restartStream();
   if(!timeline.cacheRestored)window.omegaReactChat?.followLatest();render(); renderApprovals(); controls();
   let writerConflict=false;
-  try{await rpc('thread/resume',{threadId:id},{summaryOnly:true});}
+  try{
+    const resumed=await rpc<JsonRecord>('thread/resume',{threadId:id},{summaryOnly:true});
+    const resolvedId=resumed.thread?.id;
+    if(resolvedId&&resolvedId!==id){await list();return select(resolvedId,false,notifyWriterConflict);}
+  }
   catch(cause){if(!isThreadWriterConflict(cause))throw cause;writerConflict=true;}
   if(!timeline.isCurrent(version))return;
   await hydrate(); await list(); controls();

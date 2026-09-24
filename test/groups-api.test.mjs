@@ -67,6 +67,9 @@ createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line)
     assert.notEqual(group.requirement.status,'awaiting_confirmation');assert.equal(group.requirement.tasks.length,1);
     for(let i=0;i<80&&group.requirement.status!=='completed';i++){await new Promise(r=>setTimeout(r,20));group=(await call(null,'groups/'+group.id)).group;}
     assert.equal(group.requirement.status,'completed');assert.equal(group.requirement.tasks[0].status,'completed');assert.equal(group.requirement.delivery,group.requirement.tasks[0].result);
+    const boundThreads=(await call({method:'thread/list',params:{limit:100,sourceKinds:[]}},'rpc')).data;
+    assert.equal(boundThreads.find(thread=>thread.id===group.coordinatorThreadId).omegaBinding.type,'coordinator');
+    assert.equal(boundThreads.find(thread=>thread.id===group.members[0].threadId).omegaBinding.type,'member');
     const deleted=await call({action:'deleteGroup',groupId:group.id});assert.equal(deleted.deleted,true);
     const threads=(await call({method:'thread/list',params:{limit:100,sourceKinds:[]}},'rpc')).data;
     assert(threads.some(thread=>thread.id==='11111111-1111-4111-8111-111111111111'));

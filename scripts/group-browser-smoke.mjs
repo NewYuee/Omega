@@ -20,6 +20,8 @@ try{for(const width of [390,1280]){
   await page.goto('http://omega.test/');
   await page.waitForLoadState('networkidle');
   await page.waitForFunction(()=>typeof window.omegaAppState?.getSnapshot()?.shellActions?.switchMode==='function');
+  await page.evaluate(()=>window.omegaReactWorkspace.renderThreads([{id:'bound-member',name:'开发成员',omegaBinding:{type:'member',groupName:'浏览器回归',memberName:'开发成员',role:'开发'}}],null,{open(){},rename(){},remove(){}}));
+  assert.equal(await page.locator('.thread-binding-badge').filter({hasText:'群组成员'}).count(),1,'bound member is visible and labelled in the conversation list');
   const notifications=[];
   await page.route('**/api/feishu/notify/groups',route=>route.fulfill({json:{groups:[]}}));
   await page.route('**/api/feishu/notify/contacts*',route=>route.fulfill({json:{contacts:[{openId:'ou_contact',name:'通讯录联系人'}]}}));

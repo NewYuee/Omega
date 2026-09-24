@@ -94,19 +94,19 @@ export function initGroups({getKey,api,rpc,pastedText,error,closeDrawer,openThre
 
   async function openMember(){
     if(!current)return;const result=await rpc('thread/list',{limit:100,sourceKinds:[]}),bound=new Set<string>(current.members.map((member:any)=>member.threadId));
-    const available=result.data.filter((thread:any)=>thread.id!==current.coordinatorThreadId&&!bound.has(thread.id));
+    const available=result.data.filter((thread:any)=>!thread.omegaBinding&&thread.id!==current.coordinatorThreadId&&!bound.has(thread.id));
     if(!available.length)return error('没有可添加的会话；请先新建会话，或该会话已属于其他群组。');
     const initial=available[0],project=(initial.cwd||'').split('/').filter(Boolean).at(-1)||'';
     await openDialog('member',{editing:false,member:{threadId:initial.id,name:initial.name||initial.preview||'',role:'',avatar:'preset:developer',projectName:project,cwd:initial.cwd||'',responsibilities:'',operations:'',skills:''},threads:available,onSubmit:(values:Record<string,unknown>)=>act({action:'addMember',...values,requirementId:current?.requirement?.id},'添加成员').then(ok=>{if(!ok)throw Error('添加成员失败')})});
   }
 
-  async function openMemberEdit(member:any){if(!current)return;try{const result=await rpc('thread/list',{limit:100,sourceKinds:[]}),bound=new Set<string>(current.members.filter((item:any)=>item.id!==member.id).map((item:any)=>item.threadId)),available=result.data.filter((thread:any)=>thread.id!==current.coordinatorThreadId&&!bound.has(thread.id));if(!available.some((thread:any)=>thread.id===member.threadId))available.unshift({id:member.threadId,name:'当前会话不可用',cwd:member.cwd});await openDialog('member',{editing:true,member,threads:available,onSubmit:(values:Record<string,unknown>)=>act({action:'updateMember',memberId:member.id,requirementId:current?.requirement?.id,...values},'修改成员').then(ok=>{if(!ok)throw Error('修改成员失败')})});}catch(cause){error(`读取可用会话失败：${errorMessage(cause)}`);}}
+  async function openMemberEdit(member:any){if(!current)return;try{const result=await rpc('thread/list',{limit:100,sourceKinds:[]}),bound=new Set<string>(current.members.filter((item:any)=>item.id!==member.id).map((item:any)=>item.threadId)),available=result.data.filter((thread:any)=>(thread.id===member.threadId||!thread.omegaBinding)&&thread.id!==current.coordinatorThreadId&&!bound.has(thread.id));if(!available.some((thread:any)=>thread.id===member.threadId))available.unshift({id:member.threadId,name:'当前会话不可用',cwd:member.cwd});await openDialog('member',{editing:true,member,threads:available,onSubmit:(values:Record<string,unknown>)=>act({action:'updateMember',memberId:member.id,requirementId:current?.requirement?.id,...values},'修改成员').then(ok=>{if(!ok)throw Error('修改成员失败')})});}catch(cause){error(`读取可用会话失败：${errorMessage(cause)}`);}}
 
   async function openCoordinatorEdit(){
     if(!current)return;
     try{
       const expectedThreadId=current.coordinatorThreadId,result=await rpc('thread/list',{limit:100,sourceKinds:[]}),members=new Set(current.members.map((member:any)=>member.threadId));
-      const available=result.data.filter((thread:any)=>thread.id===expectedThreadId||!members.has(thread.id));
+      const available=result.data.filter((thread:any)=>thread.id===expectedThreadId||(!thread.omegaBinding&&!members.has(thread.id)));
       if(!available.some((thread:any)=>thread.id===expectedThreadId))available.unshift({id:expectedThreadId,name:current.coordinatorThreadName||'当前协调者会话'});
       await openDialog('coordinator',{threadId:expectedThreadId,threads:available,onSubmit:(values:Record<string,unknown>)=>act({action:'setCoordinator',expectedThreadId,threadId:values.threadId,requirementId:current?.requirement?.id},'指定协调者').then(ok=>{if(!ok)throw Error('协调者未更新')})});
     }catch(cause){error(`读取协调者候选会话失败：${errorMessage(cause)}`);}

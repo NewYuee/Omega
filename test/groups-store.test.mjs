@@ -81,6 +81,24 @@ test('read-only tasks may share a workspace while writes remain exclusive',()=>{
   store.close();
 });
 
+test('different named projects may write concurrently from the same parent workspace',()=>{
+  const store=new GroupStore(':memory:');
+  let group=store.createGroup({name:'同父目录多仓',limits:{maxConcurrency:3}},'coord','/workspace');
+  group=store.addMember(group.id,{threadId:'dramaclaw',name:'Dramaclaw',role:'开发',cwd:'/workspace',projectName:'dramaclaw'});
+  group=store.addMember(group.id,{threadId:'relayclaw',name:'RelayClaw',role:'开发',cwd:'/workspace',projectName:'relayclaw'});
+  const requirement=store.createRequirement(group.id,{content:'同时修改两个仓库'}).requirement;
+  store.setPlan(requirement.id,'并行开发',[
+    {memberId:group.members[0].id,title:'修改 Dramaclaw',objective:'实现功能',accessMode:'write'},
+    {memberId:group.members[1].id,title:'修改 RelayClaw',objective:'实现网关',accessMode:'write'}
+  ],'plan','raw');
+  store.confirmPlan(group.id,requirement.id);
+  const first=store.runnableTasks(group.id)[0];store.startTask(first.id,'d','t');
+  assert.equal(store.runnableTasks(group.id).length,1);
+  assert.equal(store.runningConflict('/workspace',null,'write','relayclaw'),null);
+  assert.equal(store.runningConflict('/workspace',null,'write','dramaclaw').groupId,group.id);
+  store.close();
+});
+
 test('task plans infer safe access modes and allow explicit correction',()=>{
   const {store,group,member}=fixture();const requirement=store.createRequirement(group.id,{content:'检查后修复'}).requirement;
   store.setPlan(requirement.id,'计划',[{memberId:member.id,title:'查询版本',objective:'统计当前版本'},{memberId:member.id,title:'统计三个仓最近更新时间',objective:'确认默认分支最近更新'},{memberId:member.id,title:'实现修复',objective:'修改代码'}],'plan','raw');

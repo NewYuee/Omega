@@ -13,6 +13,12 @@ export function isThreadWriterConflict(cause:unknown):boolean {
   return (cause as ErrorLike|null)?.code===THREAD_WRITER_BUSY||activeWriterThreadId(cause)!==null;
 }
 
+export function isMissingThreadHistory(cause:unknown):boolean {
+  const value=cause as ErrorLike|null;
+  const message=value?.message instanceof String?String(value.message):typeof value?.message==='string'?value.message:String(cause||'');
+  return /no rollout found for thread id|missing source rollout|invalid paginated history lineage|thread not found|does not exist/i.test(message);
+}
+
 export function threadWriterBusyMessage():string {
   return '该会话正被另一个 Codex 窗口占用，当前以只读方式打开。其他会话和服务器连接不受影响。';
 }

@@ -33,7 +33,7 @@ import { AutomationService } from './src/server/automation-service.ts';
 import { ReadStateStore } from './src/server/read-state.ts';
 import { SearchStore } from './src/server/search-store.ts';
 import { applyPendingRestore,createBackup,stageRestore } from './src/server/backup.ts';
-import { activeWriterThreadId,THREAD_WRITER_BUSY,threadWriterBusyMessage } from './src/shared/thread-errors.ts';
+import { activeWriterThreadId,isMissingThreadHistory,THREAD_WRITER_BUSY,threadWriterBusyMessage } from './src/shared/thread-errors.ts';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const state = process.env.OMEGA_STATE_DIR || path.join(root, '.omega');
@@ -128,9 +128,10 @@ function saveLedger() {
   return ledgerWrite;
 }
 const active=new Map<string,string>();
-const activeCwds=new Map<string,{cwd:string;groupId:string|null;accessMode:string}>();
+const activeCwds=new Map<string,{cwd:string;groupId:string|null;accessMode:string;projectScope:string}>();
 const pathsOverlap=(a:string,b:string)=>{const left=path.resolve(a),right=path.resolve(b);return left===right||left.startsWith(right+path.sep)||right.startsWith(left+path.sep);};
 const modesConflict=(left:string,right:string)=>left!=='read'||right!=='read';
+const projectScopesConflict=(left:unknown,right:unknown)=>!String(left||'').trim()||!String(right||'').trim()||String(left).trim().toLowerCase()===String(right).trim().toLowerCase();
 async function resolveMemberWorkspace(sessionCwd:unknown,requestedCwd:unknown){
   let rootDir,workDir;
   try{rootDir=await realpath(String(sessionCwd||'').trim());workDir=await realpath(String(requestedCwd||rootDir).trim());}
@@ -139,15 +140,15 @@ async function resolveMemberWorkspace(sessionCwd:unknown,requestedCwd:unknown){
   if(workDir!==rootDir&&!workDir.startsWith(rootDir+path.sep))throw new Error('成员实际工作目录必须位于该会话的 Codex 工作目录内');
   return workDir;
 }
-function reserveWorkspace(threadId:string,cwd:string|null,groupId:string|null=null,accessMode='write'){
+function reserveWorkspace(threadId:string,cwd:string|null,groupId:string|null=null,accessMode='write',projectScope=''){
   if(!cwd)return null;
   // Independent personal conversations can share a working directory. The
   // active-thread check still serializes turns within the same conversation;
   // group tasks retain the stricter workspace reservation below.
-  for(const [otherId,entry] of activeCwds)if(otherId!==threadId&&(groupId!==null||entry.groupId!==null)&&modesConflict(accessMode,entry.accessMode)&&pathsOverlap(cwd,entry.cwd))return {message:`工作目录正被${entry.groupId?'另一个群组任务':'会话任务'}占用`,...entry};
-  const persisted=groups.runningConflict(cwd,groupId,accessMode);
+  for(const [otherId,entry] of activeCwds)if(otherId!==threadId&&(groupId!==null||entry.groupId!==null)&&modesConflict(accessMode,entry.accessMode)&&projectScopesConflict(projectScope,entry.projectScope)&&pathsOverlap(cwd,entry.cwd))return {message:`工作目录正被${entry.groupId?'另一个群组任务':'会话任务'}占用`,...entry};
+  const persisted=groups.runningConflict(cwd,groupId,accessMode,projectScope);
   if(persisted)return {message:`工作目录正由群组“${persisted.groupName}”执行`,...persisted};
-  activeCwds.set(threadId,{cwd,groupId,accessMode});return null;
+  activeCwds.set(threadId,{cwd,groupId,accessMode,projectScope});return null;
 }
 const pendingModels=new Map<string,any>();
 const freshThreads=new Map<string,any>();
@@ -240,7 +241,7 @@ async function startManagedTurn(threadId:string,text:string,submissionId:string,
   try{thread=freshThreads.get(threadId)||await bridge.request('thread/resume',{threadId});}
   catch(error){if(error instanceof Error)Object.assign(error,{definiteNotStarted:true});throw error;}
   if(active.has(threadId))throw Object.assign(new Error('该会话正在处理其他任务'),{status:409});
-  const binding=groups.threadBinding(threadId),taskCwd=execution.cwd||thread.thread?.cwd,taskMode=execution.accessMode==='read'?'read':'write',conflict=binding?.type==='coordinator'?null:reserveWorkspace(threadId,taskCwd,binding?.groupId||null,taskMode);
+  const binding=groups.threadBinding(threadId),taskCwd=execution.cwd||thread.thread?.cwd,taskMode=execution.accessMode==='read'?'read':'write',conflict=binding?.type==='coordinator'?null:reserveWorkspace(threadId,taskCwd,binding?.groupId||null,taskMode,execution.projectScope||'');
   if(conflict)throw Object.assign(new Error(conflict.message),{status:409});
   active.set(threadId,'starting'); if(requestedSettings)pendingModels.set(threadId,requestedSettings);
   if(pasteRefs.length)pendingPastes.set(threadId,pasteRefs);
@@ -263,7 +264,7 @@ async function prepareGroupCoordinator(groupId:string){
   const group=groups.getGroup(groupId),oldId=group.coordinatorThreadId;
   if(freshThreads.has(oldId))return;
   try{await bridge.request('thread/resume',{threadId:oldId});return;}
-  catch(error){if(!/no rollout found for thread id|missing source rollout/i.test((error as Error).message))throw error;}
+  catch(error){if(!isMissingThreadHistory(error))throw error;}
   if(!group.coordinatorOwned)throw Object.assign(new Error('指定的协调者会话无法恢复，请在成员管理中重新指定可用会话'),{status:409});
   if(active.has(oldId)||Object.values(ledger).some((entry:Row)=>entry.threadId===oldId))
     throw Object.assign(new Error('协调者会话存在未核对的派发记录，不能自动更换'),{status:409});
@@ -286,7 +287,7 @@ async function prepareGroupMember(memberId:string){
   if(!member)throw new Error('成员已不在群组中');
   if(freshThreads.has(oldId))return;
   try{await bridge.request('thread/resume',{threadId:oldId});return;}
-  catch(error){if(!/no rollout found for thread id|missing source rollout/i.test((error as Error).message))throw error;}
+  catch(error){if(!isMissingThreadHistory(error))throw error;}
   if(active.has(oldId)||Object.values(ledger).some((entry:Row)=>entry.threadId===oldId))
     throw Object.assign(new Error('成员会话存在待核对的派发记录，不能自动更换'),{status:409});
   const started:Row=await bridge.request('thread/start',{cwd:member.cwd,approvalPolicy:'on-request',sandbox:'workspace-write',ephemeral:false});
@@ -297,6 +298,26 @@ async function prepareGroupMember(memberId:string){
   const name=`[成员] ${member.name.slice(0,60)}`;
   try{await bridge.request('thread/name/set',{threadId:newId,name});started.thread.name=name;}catch{}
   broadcast({method:'omega/group-updated',params:{groupId:group.id}});
+}
+
+async function prepareBoundThreadForOpen(threadId:string){
+  const binding=groups.threadBinding(threadId);
+  if(!binding)return threadId;
+  if(binding.type==='coordinator')await prepareGroupCoordinator(binding.groupId);
+  else await prepareGroupMember(binding.memberId);
+  const group=groups.getGroup(binding.groupId);
+  return binding.type==='coordinator'?group.coordinatorThreadId:group.members.find((member:Row)=>member.id===binding.memberId)?.threadId||threadId;
+}
+
+function mergeBoundThreads(input:Row[],includeMissing=true){
+  const bindings:Row[]=groups.boundSessions(),byId=new Map(bindings.map(thread=>[thread.id,thread])),seen=new Set<string>(),result:Row[]=[];
+  for(const thread of [...[...freshThreads.values()].map(value=>value.thread),...input]){
+    if(!thread?.id||seen.has(thread.id))continue;
+    seen.add(thread.id);const bound=byId.get(thread.id);
+    result.push(bound?{...thread,omegaBinding:bound.omegaBinding}:thread);
+  }
+  if(includeMissing)for(const bound of bindings)if(!seen.has(bound.id))result.push({...bound,omegaVirtual:true});
+  return result;
 }
 
 async function readTurn(threadId:string,turnId:string):Promise<Row|null> {
@@ -353,9 +374,9 @@ orchestrator=new GroupOrchestrator({store:groups,startTurn:startManagedTurn,wait
   handoffFiles:tasks=>handoffFiles(path.join(state,'group-handoffs'),tasks),
   readPastes:refs=>pastedTexts.contents(refs),
   interruptTurn:(threadId,turnId)=>bridge.request('turn/interrupt',{threadId,turnId}),
-  isThreadActive:id=>active.has(id),isWorkspaceBusy:(cwd,groupId,accessMode='write')=>{
-    if(groups.runningConflict(cwd,null,accessMode))return true;
-    for(const entry of activeCwds.values())if(modesConflict(accessMode,entry.accessMode)&&pathsOverlap(cwd,entry.cwd))return true;
+  isThreadActive:id=>active.has(id),isWorkspaceBusy:(cwd,groupId,accessMode='write',projectScope='')=>{
+    if(groups.runningConflict(cwd,null,accessMode,projectScope))return true;
+    for(const entry of activeCwds.values())if(modesConflict(accessMode,entry.accessMode)&&projectScopesConflict(projectScope,entry.projectScope)&&pathsOverlap(cwd,entry.cwd))return true;
     return false;
   },notify:broadcast});
 automationService=new AutomationService(automationStore,async(threadId,text,submissionId,execution)=>{try{return await startManagedTurn(threadId,text,submissionId,execution)}catch(error){if(!ledger[submissionId]&&error instanceof Error)Object.assign(error,{definiteNotStarted:true});throw error;}},id=>active.has(id),broadcast);
@@ -390,6 +411,9 @@ async function cancelGroupRequirement(groupId:string,requirementId:string){
   if(coordinatorTurn&&coordinatorTurn!=='starting'&&Object.entries(ledger).some(([id,entry])=>id.startsWith(`group-plan:${requirementId}:`)&&entry.threadId===before.coordinatorThreadId&&entry.result?.turn?.id===coordinatorTurn))targets.set(before.coordinatorThreadId,coordinatorTurn);
   const result=groups.cancel(groupId,requirementId);orchestrator.changed(groupId);
   await Promise.allSettled([...targets].map(([threadId,turnId])=>bridge.request('turn/interrupt',{threadId,turnId})));
+  // Cancelling one requirement may release a member or workspace reservation
+  // needed by another queued requirement in the same group.
+  orchestrator.schedule(groupId);
   return result;
 }
 const allowed = new Set(['thread/delete', 'thread/name/set', 'thread/list', 'thread/read', 'thread/resume', 'thread/turns/list', 'thread/items/list', 'thread/start', 'turn/start', 'turn/interrupt', 'account/read', 'account/rateLimits/read', 'account/usage/read', 'model/list', 'app/list', 'app/installed', 'app/read', 'plugin/list', 'plugin/read', 'plugin/install', 'plugin/uninstall', 'mcpServerStatus/list', 'mcpServer/oauth/login', 'config/mcpServer/reload']);
@@ -641,7 +665,7 @@ const server = http.createServer(async (req, res) => {
           try{
             if(group.coordinatorOwned){
               try{await bridge.request('thread/delete',{threadId:group.coordinatorThreadId});coordinatorDeleted=true;}
-              catch(error){if(!/missing source rollout|invalid paginated history lineage|not found|does not exist/i.test((error as Error).message))throw error;}
+              catch(error){if(!isMissingThreadHistory(error))throw error;}
             }
             const deleted=groups.deleteGroup(group.id);orchestrator.forget(group.id);freshThreads.delete(group.coordinatorThreadId);
             readState.remove('group',group.id);
@@ -753,6 +777,12 @@ const server = http.createServer(async (req, res) => {
       if(input.method==='plugin/uninstall'&&input.confirmUninstall!==true)return json(res,400,{error:'卸载插件前需要明确确认'});
       const params = input.params || {};
       if (deletingThread && ['thread/delete','thread/start','thread/resume','turn/start'].includes(input.method)) return json(res,409,{error:'正在删除会话，请稍后再试'});
+      if(input.method==='thread/resume'&&input.summaryOnly&&groups.threadBinding(params.threadId)){
+        const requestedId=params.threadId,resolvedId=await prepareBoundThreadForOpen(requestedId);
+        const resumed=freshThreads.get(resolvedId)||await bridge.request('thread/resume',{threadId:resolvedId});
+        rememberNative(resumed);
+        return json(res,200,{thread:{id:resolvedId},...(resolvedId!==requestedId?{reboundFrom:requestedId}:{})});
+      }
       if (input.method === 'thread/delete') {
         if (typeof params.threadId !== 'string' || !/^[a-f0-9-]{36}$/i.test(params.threadId)) throw new Error('无效的会话 ID');
         const binding=groups.threadBinding(params.threadId);
@@ -854,7 +884,7 @@ const server = http.createServer(async (req, res) => {
         return json(res,200,{thread:{id:result.thread.id}});
       }
       if (input.method === 'thread/start') { freshThreads.set(result.thread.id,result); metrics.seed(result.thread.id); }
-      if(input.method==='thread/list')result.data=[...[...freshThreads.values()].map(x=>x.thread).filter(t=>!result.data.some((x:Row)=>x.id===t.id)),...result.data];
+      if(input.method==='thread/list')result.data=mergeBoundThreads(result.data||[],!params.cursor);
       if (result.thread?.turns) for (const turn of result.thread.turns) if (turn.status === 'inProgress') active.set(result.thread.id,turn.id);
       return json(res, 200, result);
     }
