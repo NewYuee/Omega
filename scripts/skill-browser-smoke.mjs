@@ -26,7 +26,8 @@ try{for(const width of [390,1280]){
     const name=url.pathname==='/'?'index.html':url.pathname.slice(1);try{return route.fulfill({body:await readFile(new URL('../web-dist/'+name,import.meta.url)),contentType:name.endsWith('.js')?'text/javascript':name.endsWith('.css')?'text/css':'text/html'})}catch{return route.fulfill({status:404,body:''})}
   });
   await page.goto('http://omega.test');await page.waitForFunction(()=>window.omegaAppState?.getSnapshot().authenticated);
-  await page.evaluate(()=>window.omegaAppState.patch({threadId:'t',mode:'chats'}));
+  await page.waitForFunction(()=>window.omegaAppState?.getSnapshot().threads.some(thread=>thread.id==='t'));
+  await page.evaluate(async()=>{window.omegaAppState.patch({threadId:'t',mode:'chats'});await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))) });
   if(width<700){await page.locator('#thread-more summary').click();await page.locator('.mobile-work-menu').getByRole('button',{name:'Skills'}).click();}else await page.getByRole('button',{name:'Skills',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Omega Skills'});
   await dialog.waitFor();
   await page.evaluate(()=>{document.documentElement.dataset.theme='light';document.documentElement.dataset.accent='purple'});
